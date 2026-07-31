@@ -65,9 +65,8 @@ if ! command -v claude &> /dev/null; then
 else
   claude auth status | grep "\"loggedIn\"\:\ false" 2>&1 >/dev/null;
   if [ "$?" == "0" ]; then
-    claude setup-token;
-#    echo "Please authenticate with claude before running this script."
-#    exit 1;
+    echo "Please authenticate with claude before running this script."
+    exit 1;
   fi
 fi
 
