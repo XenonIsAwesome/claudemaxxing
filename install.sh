@@ -39,12 +39,12 @@ fi
 cd "$SCRIPT_DIR" || exit 1;
 
 function link_claude_file() {
-  target=$1;
-  link=$2;
+  target="$SCRIPT_DIR/$1";
+  link="$HOME/.claude/$2";
 
   echo "Linking $target -> $link"
   mkdir -p $(dirname $link);
-  ln -sf $target $link;
+  ln -sf "$target" "$link";
 }
 
 # Adding ~/.local/bin to PATH
