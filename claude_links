@@ -1,8 +1,10 @@
 misc/settings.json ~/.claude/settings.json
 misc/CLAUDE.md ~/.claude/CLAUDE.md
 misc/statusline-command.sh ~/.claude/statusline-command.sh
+misc/contained-handoff-hook.sh ~/.claude/contained-handoff-hook.sh
 commands/claudify-project.md ~/.claude/commands/claudify-project.md
 commands/update-claudification.md ~/.claude/commands/update-claudification.md
+commands/go-contained.md ~/.claude/commands/go-contained.md
 skills/find-skills ~/.claude/skills/find-skills
 skills/graphify ~/.claude/skills/graphify
 skills/plannotator-annotate ~/.claude/skills/plannotator-annotate
