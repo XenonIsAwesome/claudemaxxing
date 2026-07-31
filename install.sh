@@ -42,6 +42,11 @@ function link_claude_file() {
   target="$SCRIPT_DIR/$1";
   link="$HOME/.claude/$2";
 
+  if [ -L "$link" ] && [ "$(readlink "$link")" == "$target" ]; then
+    echo "Already linked: $link -> $target, skipping.";
+    return;
+  fi
+
   echo "Linking $target -> $link"
   mkdir -p $(dirname $link);
   ln -sf "$target" "$link";
