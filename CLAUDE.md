@@ -66,14 +66,17 @@ shell. There is currently no error surfaced when this happens — the native
 session just ends and nothing resumes it.
 
 `CLAUDE_SANDBOX_SCRIPT` is exported by `install.sh` to this checkout's
-`contained-claude/sandbox.sh` (an absolute path resolved at install time —
-deliberately not exposed as a generically-named command on `PATH`).
-`install.sh` also runs `git submodule update --init` automatically if
+`contained-claude/sandbox.sh` (an absolute path resolved at install time).
+`install.sh` also adds a `contained-claude` alias to `~/.bashrc` (expanding to
+`$CLAUDE_SANDBOX_SCRIPT` at invocation time) so `sandbox.sh` can be called
+directly by name — e.g. `contained-claude -r <session-id>` — without needing
+the full path, for starting a sandbox outside of the `/go-contained` handoff
+flow. `install.sh` also runs `git submodule update --init` automatically if
 `contained-claude/sandbox.sh` is missing (e.g. after a plain `git pull` on an
-existing checkout), and upserts (not just appends) the `CLAUDE_SANDBOX_SCRIPT`
-line in `~/.bashrc` by exact-line match on the variable name, so re-running
-`install.sh` after moving/re-cloning the repo actually replaces the stale
-path instead of leaving it in place.
+existing checkout), and upserts (not just appends) both the
+`CLAUDE_SANDBOX_SCRIPT` export and the `contained-claude` alias in `~/.bashrc`
+by exact-line match, so re-running `install.sh` after moving/re-cloning the
+repo actually replaces the stale path instead of leaving it in place.
 
 The Docker image must use `ENTRYPOINT` (not `CMD`) for `claude` — `sandbox.sh`
 forwards args like `-r <session-id>` after the image name, and without an

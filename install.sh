@@ -65,6 +65,15 @@ if [ -x "$SCRIPT_DIR/contained-claude/sandbox.sh" ]; then
 
   HOOK_LINE='[ -f "$HOME/.claude/contained-handoff-hook.sh" ] && source "$HOME/.claude/contained-handoff-hook.sh"';
   grep -qxF "$HOOK_LINE" ~/.bashrc 2>/dev/null || echo "$HOOK_LINE" >> ~/.bashrc;
+
+  # Alias for calling contained-claude's sandbox.sh directly (e.g. to start
+  # a fresh sandboxed session, not just resume one via /go-contained).
+  CONTAINED_CLAUDE_ALIAS_LINE='alias contained-claude="$CLAUDE_SANDBOX_SCRIPT"';
+  if grep -q '^alias contained-claude=' ~/.bashrc 2>/dev/null; then
+    sed -i "s|^alias contained-claude=.*|$CONTAINED_CLAUDE_ALIAS_LINE|" ~/.bashrc;
+  else
+    echo "$CONTAINED_CLAUDE_ALIAS_LINE" >> ~/.bashrc;
+  fi
 else
   echo "warning: contained-claude/sandbox.sh is still missing after submodule init - /go-contained will not work until this is fixed." >&2;
 fi
