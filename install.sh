@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ -z "$BASH_VERSION" ]; then
+  echo "install.sh requires bash - run it as ./install.sh or 'bash install.sh', not 'sh install.sh'." >&2
+  exit 1
+fi
+
 function link_claude_file() {
   target=$1;
   link=$2;
@@ -36,6 +41,32 @@ else
 #    echo "Please authenticate with claude before running this script."
 #    exit 1;
   fi
+fi
+
+# Point /go-contained + the handoff hook at this checkout's contained-claude
+# submodule, and source the hook itself.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd);
+
+if [ ! -x "$SCRIPT_DIR/contained-claude/sandbox.sh" ]; then
+  echo "contained-claude submodule not initialized, running git submodule update --init...";
+  (cd "$SCRIPT_DIR" && git submodule update --init contained-claude);
+fi
+
+if [ -x "$SCRIPT_DIR/contained-claude/sandbox.sh" ]; then
+  # Replace (not just append-if-missing) any existing export line, so
+  # re-running install.sh after moving/re-cloning the repo actually updates
+  # the path instead of leaving a stale one in place.
+  CLAUDE_SANDBOX_EXPORT_LINE="export CLAUDE_SANDBOX_SCRIPT=\"$SCRIPT_DIR/contained-claude/sandbox.sh\"";
+  if grep -q '^export CLAUDE_SANDBOX_SCRIPT=' ~/.bashrc 2>/dev/null; then
+    sed -i "s|^export CLAUDE_SANDBOX_SCRIPT=.*|$CLAUDE_SANDBOX_EXPORT_LINE|" ~/.bashrc;
+  else
+    echo "$CLAUDE_SANDBOX_EXPORT_LINE" >> ~/.bashrc;
+  fi
+
+  HOOK_LINE='[ -f "$HOME/.claude/contained-handoff-hook.sh" ] && source "$HOME/.claude/contained-handoff-hook.sh"';
+  grep -qxF "$HOOK_LINE" ~/.bashrc 2>/dev/null || echo "$HOOK_LINE" >> ~/.bashrc;
+else
+  echo "warning: contained-claude/sandbox.sh is still missing after submodule init - /go-contained will not work until this is fixed." >&2;
 fi
 
 # Install uv & graphify
