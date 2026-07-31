@@ -1,6 +1,6 @@
-settings.json ~/.claude/settings.json
-CLAUDE.md ~/.claude/CLAUDE.md
-statusline-command.sh ~/.claude/statusline-command.sh
+misc/settings.json ~/.claude/settings.json
+misc/CLAUDE.md ~/.claude/CLAUDE.md
+misc/statusline-command.sh ~/.claude/statusline-command.sh
 commands/claudify-project.md ~/.claude/commands/claudify-project.md
 commands/update-claudification.md ~/.claude/commands/update-claudification.md
 skills/find-skills ~/.claude/skills/find-skills
