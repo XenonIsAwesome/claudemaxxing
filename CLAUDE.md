@@ -11,10 +11,10 @@ This is a personal Claude Code configuration repo ("claudemaxxing"). It is not a
 - `install.sh` — bootstrap script. Ensures `curl`/`git`/`claude` are present, installs `uv` + the `graphify` CLI and the `plannotator` CLI if missing, adds the `plannotator` marketplace, installs every plugin listed in `claude_plugins`, then symlinks every pair listed in `claude_links`.
 - `claude_links` — table of `<source path in this repo> <destination path under ~>` pairs (space-separated). `install.sh` reads this line by line and calls `ln -sf` for each, creating parent dirs as needed. **This is the single source of truth for what gets linked where** — when adding a new skill/command/misc file that should be installed, add a row here too, or it will exist in the repo but never reach `~/.claude`.
 - `claude_plugins` — flat list of `<plugin>@<marketplace>` entries installed via `claude plugin install` in `install.sh`.
-- `commands/` — custom slash commands (`claudify-project.md`, `update-claudification.md`, `go-contained.md`), linked individually into `~/.claude/commands/`.
+- `commands/` — custom slash commands (`claudify-project.md`, `update-claudification.md`, `claude-tainer.md`), linked individually into `~/.claude/commands/`.
 - `skills/` — custom skills, each linked as a whole directory into `~/.claude/skills/<name>/`. Skills follow the standard `SKILL.md` frontmatter format (`name`, `description`) that Claude Code's skill discovery scans.
-- `misc/` — files linked directly to `~/.claude/` (`CLAUDE.md` = global user instructions, `settings.json` = global settings, `statusline-command.sh`, `contained-handoff-hook.sh`).
-- `contained-claude/` — git submodule (`XenonIsAwesome/claude-container-sandbox`), *not* symlinked into `~/.claude`. It stays checked out at its real path inside this repo; see "Contained sessions" below.
+- `misc/` — files linked directly to `~/.claude/` (`CLAUDE.md` = global user instructions, `settings.json` = global settings, `statusline-command.sh`, `claude-tainer-handoff-hook.sh`).
+- `claude-tainer/` — git submodule (`XenonIsAwesome/claude-tainer`), *not* symlinked into `~/.claude`. It stays checked out at its real path inside this repo; see "Contained sessions" below.
 
 ## Working in this repo
 
@@ -31,10 +31,10 @@ Two of the custom commands in `commands/` are meta-tools for *other* repositorie
 
 Both are written as strict, ordered, stop-on-failure runbooks (verify tools → verify clean git state → confirm branch → do the work → commit) — if extending them, preserve that structure rather than collapsing steps.
 
-## Contained sessions (`contained-claude` submodule + `/go-contained`)
+## Contained sessions (`claude-tainer` submodule + `/claude-tainer`)
 
-`contained-claude` (submodule, separate repo/remote) runs Claude Code in an
-isolated Docker container via `contained-claude/sandbox.sh`. Because
+`claude-tainer` (submodule, separate repo/remote) runs Claude Code in an
+isolated Docker container via `claude-tainer/sandbox.sh`. Because
 `sandbox.sh` mounts the real project path and the real `~/.claude`, a
 container started with `sandbox.sh -r <session-id>` resumes the exact same
 transcript a native session was using — same project, same skills/settings.
@@ -44,14 +44,14 @@ attach an interactive `docker run -it` container mid-turn (a tool call is a
 subprocess of the harness, not a replacement for it), so "moving" a session
 into the sandbox is a two-part handoff rather than one atomic action:
 
-1. **`/go-contained`** (`commands/go-contained.md`) — run from inside a
+1. **`/claude-tainer`** (`commands/claude-tainer.md`) — run from inside a
    native session. Writes `$CLAUDE_CODE_SESSION_ID`, `$PWD`, `$CLAUDE_PID`,
    and a timestamp to a handoff file named after the terminal's `tty`
-   (`~/.claude/.contained-handoff.<tty>`, so concurrent handoffs in other
+   (`~/.claude/.claude-tainer-handoff.<tty>`, so concurrent handoffs in other
    terminals don't collide), tells the user, then `kill`s `$CLAUDE_PID` to
    end that session — checking the kill's exit status rather than assuming
    it worked.
-2. **`misc/contained-handoff-hook.sh`** — sourced from `~/.bashrc` by
+2. **`misc/claude-tainer-handoff-hook.sh`** — sourced from `~/.bashrc` by
    `install.sh`. A `PROMPT_COMMAND` hook (array- and scalar-safe, so it
    doesn't clobber other tools' hooks) that fires on the next shell prompt
    *in that same terminal*, finds that terminal's handoff file, discards it
@@ -66,15 +66,15 @@ shell. There is currently no error surfaced when this happens — the native
 session just ends and nothing resumes it.
 
 `CLAUDE_SANDBOX_SCRIPT` is exported by `install.sh` to this checkout's
-`contained-claude/sandbox.sh` (an absolute path resolved at install time).
-`install.sh` also adds a `contained-claude` alias to `~/.bashrc` (expanding to
+`claude-tainer/sandbox.sh` (an absolute path resolved at install time).
+`install.sh` also adds a `claude-tainer` alias to `~/.bashrc` (expanding to
 `$CLAUDE_SANDBOX_SCRIPT` at invocation time) so `sandbox.sh` can be called
-directly by name — e.g. `contained-claude -r <session-id>` — without needing
-the full path, for starting a sandbox outside of the `/go-contained` handoff
+directly by name — e.g. `claude-tainer -r <session-id>` — without needing
+the full path, for starting a sandbox outside of the `/claude-tainer` handoff
 flow. `install.sh` also runs `git submodule update --init` automatically if
-`contained-claude/sandbox.sh` is missing (e.g. after a plain `git pull` on an
+`claude-tainer/sandbox.sh` is missing (e.g. after a plain `git pull` on an
 existing checkout), and upserts (not just appends) both the
-`CLAUDE_SANDBOX_SCRIPT` export and the `contained-claude` alias in `~/.bashrc`
+`CLAUDE_SANDBOX_SCRIPT` export and the `claude-tainer` alias in `~/.bashrc`
 by exact-line match, so re-running `install.sh` after moving/re-cloning the
 repo actually replaces the stale path instead of leaving it in place.
 
@@ -82,8 +82,8 @@ The Docker image must use `ENTRYPOINT` (not `CMD`) for `claude` — `sandbox.sh`
 forwards args like `-r <session-id>` after the image name, and without an
 `ENTRYPOINT`, `docker run image <args>` replaces `CMD` outright instead of
 passing those args through. This was fixed upstream in
-`claude-container-sandbox`; if that submodule is ever bumped to a commit that
-regresses this, `/go-contained`'s resume step will silently fail to forward
+`claude-tainer`; if that submodule is ever bumped to a commit that
+regresses this, `/claude-tainer`'s resume step will silently fail to forward
 `-r`.
 
 ## Settings notes (`misc/settings.json`)

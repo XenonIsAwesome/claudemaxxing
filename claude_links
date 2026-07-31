@@ -1,10 +1,10 @@
 misc/settings.json settings.json
 misc/CLAUDE.md CLAUDE.md
 misc/statusline-command.sh statusline-command.sh
-misc/contained-handoff-hook.sh contained-handoff-hook.sh
+misc/claude-tainer-handoff-hook.sh claude-tainer-handoff-hook.sh
 commands/claudify-project.md commands/claudify-project.md
 commands/update-claudification.md commands/update-claudification.md
-commands/go-contained.md commands/go-contained.md
+commands/claude-tainer.md commands/claude-tainer.md
 skills/find-skills skills/find-skills
 skills/graphify skills/graphify
 skills/plannotator-annotate skills/plannotator-annotate

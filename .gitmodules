@@ -1,3 +1,3 @@
-[submodule "contained-claude"]
-	path = contained-claude
-	url = https://github.com/XenonIsAwesome/claude-container-sandbox.git
+[submodule "claude-tainer"]
+	path = claude-tainer
+	url = https://github.com/XenonIsAwesome/claude-tainer.git
