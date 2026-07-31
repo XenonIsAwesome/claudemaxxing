@@ -15,15 +15,6 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   export PATH="$HOME/.local/bin:$PATH";
 fi
 
-# Point /go-contained + the handoff hook at this checkout's contained-claude
-# submodule, and source the hook itself. Both are appended idempotently.
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd);
-SANDBOX_SCRIPT_LINE="export CLAUDE_SANDBOX_SCRIPT=\"$SCRIPT_DIR/contained-claude/sandbox.sh\"";
-grep -qF 'CLAUDE_SANDBOX_SCRIPT=' ~/.bashrc 2>/dev/null || echo "$SANDBOX_SCRIPT_LINE" >> ~/.bashrc;
-
-HOOK_LINE='[ -f "$HOME/.claude/contained-handoff-hook.sh" ] && source "$HOME/.claude/contained-handoff-hook.sh"';
-grep -qxF "$HOOK_LINE" ~/.bashrc 2>/dev/null || echo "$HOOK_LINE" >> ~/.bashrc;
-
 # Ensuring script can work
 if ! command -v curl &> /dev/null; then
   echo "Please install curl for this script to work.";
@@ -46,6 +37,15 @@ else
 #    exit 1;
   fi
 fi
+
+# Point /go-contained + the handoff hook at this checkout's contained-claude
+# submodule, and source the hook itself. Both are appended idempotently.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd);
+SANDBOX_SCRIPT_LINE="export CLAUDE_SANDBOX_SCRIPT=\"$SCRIPT_DIR/contained-claude/sandbox.sh\"";
+grep -qF 'CLAUDE_SANDBOX_SCRIPT=' ~/.bashrc 2>/dev/null || echo "$SANDBOX_SCRIPT_LINE" >> ~/.bashrc;
+
+HOOK_LINE='[ -f "$HOME/.claude/contained-handoff-hook.sh" ] && source "$HOME/.claude/contained-handoff-hook.sh"';
+grep -qxF "$HOOK_LINE" ~/.bashrc 2>/dev/null || echo "$HOOK_LINE" >> ~/.bashrc;
 
 # Install uv & graphify
 if ! command -v graphify &> /dev/null; then
