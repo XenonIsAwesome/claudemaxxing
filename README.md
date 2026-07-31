@@ -29,12 +29,14 @@ Requires `curl` and `git`, and the `claude` CLI to already be installed. The scr
 
 From a normal (native) Claude Code session, run `/go-contained` to hand off: it saves the current session id, ends the session, and — thanks to a hook `install.sh` wires into `~/.bashrc` — the very next shell prompt in that same terminal automatically launches `contained-claude/sandbox.sh -r <session-id>`, resuming that exact conversation inside the container. This only works in a bash shell with `~/.bashrc` sourced (not zsh/fish); see `CLAUDE.md` for the full mechanism, including the staleness/race-condition guards.
 
-You can also run the sandbox directly without going through `/go-contained`:
+You can also run the sandbox directly without going through `/go-contained`.
+`install.sh` adds a `contained-claude` alias to `~/.bashrc` (pointing at this
+checkout's `sandbox.sh`), so once a shell has picked that up:
 
 ```bash
 cd <your-project>
-~/.claudemaxxing/contained-claude/sandbox.sh          # start a fresh sandboxed session
-~/.claudemaxxing/contained-claude/sandbox.sh -r <id>  # resume a specific session
+contained-claude          # start a fresh sandboxed session
+contained-claude -r <id>  # resume a specific session
 ```
 
 ## Adding a new skill or command
