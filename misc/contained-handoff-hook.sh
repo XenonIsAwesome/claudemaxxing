@@ -8,9 +8,13 @@
 # don't clobber each other) and, if present, fresh, and the original process
 # has actually exited, resumes it inside contained-claude on the next prompt.
 _claude_contained_handoff_check() {
+  # Derived via `ps` (not the bare `tty` command) on this shell's own PID
+  # ($$), so it matches exactly how /go-contained computed the id for
+  # $CLAUDE_PID (also via `ps -o tty=`, since that step runs through a
+  # Bash-tool subprocess with no controlling terminal of its own).
   local tty_id
-  tty_id=$(tty 2>/dev/null | tr -c 'A-Za-z0-9' '_')
-  [ -n "$tty_id" ] || return 0
+  tty_id=$(ps -o tty= -p "$$" 2>/dev/null | tr -d '[:space:]' | tr -c 'A-Za-z0-9' '_')
+  [ -n "$tty_id" ] && [ "$tty_id" != "_" ] || return 0
 
   local f="$HOME/.claude/.contained-handoff.$tty_id"
   [ -f "$f" ] || return 0

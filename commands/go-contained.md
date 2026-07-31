@@ -51,15 +51,31 @@ command -v docker >/dev/null 2>&1 || echo MISSING_DOCKER
 The sandbox needs to be launched from the project directory (so `sandbox.sh`
 mounts the right path), needs to know which session to resume, and the hook
 needs the PID + a timestamp to guard against a double-resume race and stale
-handoffs. The file is named per-terminal (by `tty`) so concurrent
-`/go-contained` invocations in different terminals don't clobber each other.
+handoffs. The file is named per-terminal so concurrent `/go-contained`
+invocations in different terminals don't clobber each other.
+
+The terminal id is derived from `$CLAUDE_PID`'s controlling tty via `ps`, not
+the bare `tty` command — this step runs through the Bash tool, whose
+subprocess has no controlling terminal of its own (`tty` there prints "not a
+tty"), even though the actual `claude` process it's a child of is attached to
+one. `ps -o tty= -p "$CLAUDE_PID"` looks up that terminal from the process
+table instead, which works regardless of the calling process's own tty.
 
 ```bash
-TTY_ID=$(tty 2>/dev/null | tr -c 'A-Za-z0-9' '_')
-HANDOFF_FILE="$HOME/.claude/.contained-handoff.$TTY_ID"
-printf '%s\n%s\n%s\n%s\n' "$CLAUDE_CODE_SESSION_ID" "$PWD" "$CLAUDE_PID" "$(date +%s)" > "$HANDOFF_FILE"
-cat "$HANDOFF_FILE"
+TTY_ID=$(ps -o tty= -p "$CLAUDE_PID" 2>/dev/null | tr -d '[:space:]' | tr -c 'A-Za-z0-9' '_')
+if [ -z "$TTY_ID" ] || [ "$TTY_ID" = "_" ]; then
+  echo "NO_CONTROLLING_TTY"
+else
+  HANDOFF_FILE="$HOME/.claude/.contained-handoff.$TTY_ID"
+  printf '%s\n%s\n%s\n%s\n' "$CLAUDE_CODE_SESSION_ID" "$PWD" "$CLAUDE_PID" "$(date +%s)" > "$HANDOFF_FILE"
+  cat "$HANDOFF_FILE"
+fi
 ```
+
+If `NO_CONTROLLING_TTY` prints: stop. The `claude` process isn't attached to
+a terminal (e.g. already running under something that detached it), so there
+is no terminal for the handoff hook to fire in later — tell the user and do
+not proceed to Step 5.
 
 Confirm the file now contains exactly four lines: the session id, the
 current project directory, `$CLAUDE_PID`, and a unix timestamp.
