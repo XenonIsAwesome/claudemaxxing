@@ -5,6 +5,39 @@ if [ -z "$BASH_VERSION" ]; then
   exit 1
 fi
 
+if ! command -v git &> /dev/null; then
+  echo "Please install git for this script to work.";
+  exit 1;
+fi
+
+# Bootstrap: if this isn't running from inside an actual claudemaxxing
+# checkout (e.g. fetched standalone via `curl | bash`, or downloaded on its
+# own without the rest of the repo), clone the full repo into
+# ~/.claudemaxxing and re-exec install.sh from there, so every relative path
+# below (claude_links, claude_plugins, contained-claude/, etc.) resolves
+# correctly. Running install.sh from within an already-cloned checkout
+# (anywhere on disk) skips this entirely and behaves as before.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd);
+
+if [ ! -f "$SCRIPT_DIR/claude_links" ]; then
+  CLAUDEMAXXING_DIR="$HOME/.claudemaxxing";
+  if [ -f "$CLAUDEMAXXING_DIR/claude_links" ]; then
+    echo "Found existing claudemaxxing checkout at $CLAUDEMAXXING_DIR, using it.";
+  elif [ -e "$CLAUDEMAXXING_DIR" ]; then
+    echo "$CLAUDEMAXXING_DIR already exists but doesn't look like a claudemaxxing checkout - remove or rename it, then re-run." >&2;
+    exit 1;
+  else
+    echo "Cloning claudemaxxing into $CLAUDEMAXXING_DIR...";
+    git clone --recurse-submodules https://github.com/XenonIsAwesome/claudemaxxing.git "$CLAUDEMAXXING_DIR" || exit 1;
+  fi
+  exec bash "$CLAUDEMAXXING_DIR/install.sh" "$@";
+fi
+
+# claude_links stores its link sources as paths relative to the repo root
+# (e.g. `misc/settings.json`), so make sure we're actually running from
+# there regardless of where install.sh was invoked from.
+cd "$SCRIPT_DIR" || exit 1;
+
 function link_claude_file() {
   target=$1;
   link=$2;
@@ -26,11 +59,6 @@ if ! command -v curl &> /dev/null; then
   exit 1;
 fi
 
-if ! command -v git &> /dev/null; then
-  echo "Please install git for this script to work.";
-  exit 1;
-fi
-
 if ! command -v claude &> /dev/null; then
   echo "Please install claude for this script to work.";
   exit 1;
@@ -45,8 +73,6 @@ fi
 
 # Point /go-contained + the handoff hook at this checkout's contained-claude
 # submodule, and source the hook itself.
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd);
-
 if [ ! -x "$SCRIPT_DIR/contained-claude/sandbox.sh" ]; then
   echo "contained-claude submodule not initialized, running git submodule update --init...";
   (cd "$SCRIPT_DIR" && git submodule update --init contained-claude);
@@ -93,9 +119,9 @@ fi
 claude plugin marketplace add backnotprop/plannotator;
 
 # Install all plugins
-xargs -a claude_plugins -n1 -r claude plugin install;
+xargs -a "$SCRIPT_DIR/claude_plugins" -n1 -r claude plugin install;
 
 # Link all files
 while read -r target link; do
   link_claude_file $target $link;
-done < claude_links
+done < "$SCRIPT_DIR/claude_links"
