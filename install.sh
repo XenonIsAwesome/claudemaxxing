@@ -1,0 +1,61 @@
+#!/bin/bash
+
+function link_claude_file() {
+  target=$1;
+  link=$2;
+
+  echo "Linking $target -> $link"
+  mkdir -p $(dirname $link);
+  ln -sf $target $link;
+}
+
+# Adding ~/.local/bin to PATH
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc;
+  export PATH="$HOME/.local/bin:$PATH";
+fi
+
+# Ensuring script can work
+if ! command -v curl &> /dev/null; then
+  echo "Please install curl for this script to work.";
+  exit 1;
+fi
+
+if ! command -v git &> /dev/null; then
+  echo "Please install git for this script to work.";
+  exit 1;
+fi
+
+if ! command -v claude &> /dev/null; then
+  echo "Please install claude for this script to work.";
+  exit 1;
+else
+  claude auth status | grep "\"loggedIn\"\:\ false" 2>&1 >/dev/null;
+  if [ "$?" == "0" ]; then
+    claude setup-token;
+#    echo "Please authenticate with claude before running this script."
+#    exit 1;
+  fi
+fi
+
+# Install uv & graphify
+if ! command -v graphify &> /dev/null; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh;
+  uv tool install graphifyy;
+fi
+
+# Install plannotator cli
+if ! command -v plannotator &> /dev/null; then
+  curl -fsSL https://plannotator.ai/install.sh | bash -s -- --non-interactive --minimal
+fi
+
+# Add and update all marketplaces
+claude plugin marketplace add backnotprop/plannotator;
+
+# Install all plugins
+xargs -a claude_plugins -n1 -r claude plugin install;
+
+# Link all files
+while read -r target link; do
+  link_claude_file $target $link;
+done < claude_links

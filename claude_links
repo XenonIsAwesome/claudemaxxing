@@ -1,0 +1,13 @@
+settings.json ~/.claude/settings.json
+CLAUDE.md ~/.claude/CLAUDE.md
+statusline-command.sh ~/.claude/statusline-command.sh
+commands/claudify-project.md ~/.claude/commands/claudify-project.md
+commands/update-claudification.md ~/.claude/commands/update-claudification.md
+skills/find-skills ~/.claude/skills/find-skills
+skills/graphify ~/.claude/skills/graphify
+skills/plannotator-annotate ~/.claude/skills/plannotator-annotate
+skills/plannotator-compound ~/.claude/skills/plannotator-compound 
+skills/plannotator-last ~/.claude/skills/plannotator-last
+skills/plannotator-review ~/.claude/skills/plannotator-review
+skills/plannotator-setup-goal ~/.claude/skills/plannotator-setup-goal
+skills/plannotator-visual-explainer ~/.claude/skills/plannotator-visual-explainer
