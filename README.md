@@ -27,7 +27,7 @@ Requires `curl` and `git`, and the `claude` CLI to already be installed. The scr
 
 `contained-claude` runs Claude Code inside an isolated Docker sandbox (own network/filesystem, `--dangerously-skip-permissions`), while still sharing your real `~/.claude` config and mounting the current project at its real path — so session history lines up between native and sandboxed runs.
 
-From a normal (native) Claude Code session, run `/go-contained` to hand off: it saves the current session id, ends the session, and — thanks to a hook `install.sh` wires into `~/.bashrc` — the very next shell prompt in that same terminal automatically launches `contained-claude/sandbox.sh -r <session-id>`, resuming that exact conversation inside the container.
+From a normal (native) Claude Code session, run `/go-contained` to hand off: it saves the current session id, ends the session, and — thanks to a hook `install.sh` wires into `~/.bashrc` — the very next shell prompt in that same terminal automatically launches `contained-claude/sandbox.sh -r <session-id>`, resuming that exact conversation inside the container. This only works in a bash shell with `~/.bashrc` sourced (not zsh/fish); see `CLAUDE.md` for the full mechanism, including the staleness/race-condition guards.
 
 You can also run the sandbox directly without going through `/go-contained`:
 

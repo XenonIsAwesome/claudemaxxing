@@ -45,21 +45,35 @@ subprocess of the harness, not a replacement for it), so "moving" a session
 into the sandbox is a two-part handoff rather than one atomic action:
 
 1. **`/go-contained`** (`commands/go-contained.md`) — run from inside a
-   native session. Writes the current `$CLAUDE_CODE_SESSION_ID` and `$PWD` to
-   `~/.claude/.contained-handoff`, tells the user, then `kill`s
-   `$CLAUDE_PID` to end that session.
+   native session. Writes `$CLAUDE_CODE_SESSION_ID`, `$PWD`, `$CLAUDE_PID`,
+   and a timestamp to a handoff file named after the terminal's `tty`
+   (`~/.claude/.contained-handoff.<tty>`, so concurrent handoffs in other
+   terminals don't collide), tells the user, then `kill`s `$CLAUDE_PID` to
+   end that session — checking the kill's exit status rather than assuming
+   it worked.
 2. **`misc/contained-handoff-hook.sh`** — sourced from `~/.bashrc` by
-   `install.sh`. A `PROMPT_COMMAND` hook that fires on the very next shell
-   prompt after the native session exits, finds the handoff file, and runs
+   `install.sh`. A `PROMPT_COMMAND` hook (array- and scalar-safe, so it
+   doesn't clobber other tools' hooks) that fires on the next shell prompt
+   *in that same terminal*, finds that terminal's handoff file, discards it
+   if stale (>1h) or if `$CLAUDE_PID` is still alive (avoids a double-resume
+   race if the kill silently failed), and otherwise runs
    `$CLAUDE_SANDBOX_SCRIPT -r <session-id>` from the saved directory —
-   resuming that same session inside the container, automatically, in the
-   same terminal.
+   resuming that same session inside the container.
+
+This mechanism is **bash-and-`~/.bashrc`-only**: it silently does nothing on
+zsh/fish, or any shell setup that doesn't source `~/.bashrc` per interactive
+shell. There is currently no error surfaced when this happens — the native
+session just ends and nothing resumes it.
 
 `CLAUDE_SANDBOX_SCRIPT` is exported by `install.sh` to this checkout's
 `contained-claude/sandbox.sh` (an absolute path resolved at install time —
-deliberately not exposed as a generically-named command on `PATH`). If
-`contained-claude` is moved or the repo re-cloned elsewhere, re-run
-`install.sh` to refresh that export.
+deliberately not exposed as a generically-named command on `PATH`).
+`install.sh` also runs `git submodule update --init` automatically if
+`contained-claude/sandbox.sh` is missing (e.g. after a plain `git pull` on an
+existing checkout), and upserts (not just appends) the `CLAUDE_SANDBOX_SCRIPT`
+line in `~/.bashrc` by exact-line match on the variable name, so re-running
+`install.sh` after moving/re-cloning the repo actually replaces the stale
+path instead of leaving it in place.
 
 The Docker image must use `ENTRYPOINT` (not `CMD`) for `claude` — `sandbox.sh`
 forwards args like `-r <session-id>` after the image name, and without an

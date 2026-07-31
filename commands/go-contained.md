@@ -49,15 +49,20 @@ command -v docker >/dev/null 2>&1 || echo MISSING_DOCKER
 ## Step 3 - Write the handoff file
 
 The sandbox needs to be launched from the project directory (so `sandbox.sh`
-mounts the right path), and needs to know which session to resume.
+mounts the right path), needs to know which session to resume, and the hook
+needs the PID + a timestamp to guard against a double-resume race and stale
+handoffs. The file is named per-terminal (by `tty`) so concurrent
+`/go-contained` invocations in different terminals don't clobber each other.
 
 ```bash
-printf '%s\n%s\n' "$CLAUDE_CODE_SESSION_ID" "$PWD" > "$HOME/.claude/.contained-handoff"
-cat "$HOME/.claude/.contained-handoff"
+TTY_ID=$(tty 2>/dev/null | tr -c 'A-Za-z0-9' '_')
+HANDOFF_FILE="$HOME/.claude/.contained-handoff.$TTY_ID"
+printf '%s\n%s\n%s\n%s\n' "$CLAUDE_CODE_SESSION_ID" "$PWD" "$CLAUDE_PID" "$(date +%s)" > "$HANDOFF_FILE"
+cat "$HANDOFF_FILE"
 ```
 
-Confirm the file now contains exactly two lines: the session id, then the
-current project directory.
+Confirm the file now contains exactly four lines: the session id, the
+current project directory, `$CLAUDE_PID`, and a unix timestamp.
 
 ## Step 4 - Tell the user what's about to happen
 
@@ -71,14 +76,23 @@ words, something like:
 ## Step 5 - End the current session
 
 ```bash
-kill "$CLAUDE_PID"
+kill "$CLAUDE_PID" || echo "KILL_FAILED"
 ```
 
 This is the intended effect of `/go-contained` — the user invoked this
 command specifically to end the native session and continue in the sandbox,
-so no further confirmation is needed beyond Step 4's notice. After this
-runs, the parent `claude` process exits; the `contained-handoff-hook.sh`
-hook sourced from `~/.bashrc` detects `~/.claude/.contained-handoff` on the
-next prompt and runs `contained-claude`'s `sandbox.sh -r
-<session-id>` from the saved directory, resuming this conversation inside
-the container.
+so no further confirmation is needed beyond Step 4's notice.
+
+If `KILL_FAILED` prints: tell the user the session could not be ended and
+the handoff will **not** happen automatically — do not claim the handoff is
+in progress. (The hook itself also refuses to resume while `$CLAUDE_PID` is
+still alive, so a failed kill fails safe rather than double-resuming.)
+
+Otherwise, after this runs, the parent `claude` process exits; the
+`contained-handoff-hook.sh` hook sourced from `~/.bashrc` detects the
+handoff file for this terminal's `tty` on the next prompt, confirms
+`$CLAUDE_PID` has actually exited, and runs `contained-claude`'s
+`sandbox.sh -r <session-id>` from the saved directory — resuming this
+conversation inside the container. This requires the terminal's shell to be
+bash with `~/.bashrc` sourced; it silently won't happen otherwise (see
+CLAUDE.md's "Contained sessions" section).
