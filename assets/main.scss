@@ -1,15 +1,13 @@
 ---
 ---
 
-@import "minima/skins/{{ site.minima.skin | default: 'classic' }}";
-@import "minima/initialize";
-
-// Anthropic-inspired palette
-$background-color: #F0EEE6;
-$text-color:        #1A1A19;
-$brand-color:        #D97757;
-$link-base-color:   $brand-color;
+// Anthropic-inspired palette (minima 2.5.1 uses !default vars, so setting
+// these before importing the theme overrides them)
+$background-color:  #F0EEE6;
+$text-color:         #1A1A19;
+$brand-color:         #D97757;
+$link-base-color:    $brand-color;
 $link-visited-color: $brand-color;
-$link-hover-color:  darken($brand-color, 10%);
+$link-hover-color:   darken($brand-color, 10%);
 
 @import "minima";
