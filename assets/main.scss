@@ -8,14 +8,3 @@ $text-color:        #1A1A19;
 $brand-color:        #D97757;
 
 @import "minima";
-
-// minima 2.5.1 hardcodes the header bar/title to $grey-color-dark rather than
-// exposing it as a variable, so extend the accent here directly.
-.site-header {
-  border-top-color: $brand-color;
-}
-
-.site-title,
-.site-title:visited {
-  color: $brand-color;
-}
