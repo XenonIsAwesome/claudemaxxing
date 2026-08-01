@@ -13,15 +13,15 @@ Personal Claude Code configuration: custom skills, slash commands, plugin list, 
 - `claude-tainer/` — git submodule ([`claude-tainer`](https://github.com/XenonIsAwesome/claude-tainer)) that runs Claude Code in an isolated Docker container. See below.
 
 ## Install
-
 ```bash
-git clone --recurse-submodules git@github.com:XenonIsAwesome/claudemaxxing.git
-./install.sh
+bash <(curl -fsSL xenonisawesome.github.io/claudemaxxing/install.sh)
 ```
-
-(If you already cloned without `--recurse-submodules`, run `git submodule update --init` first.)
-
-Requires `curl` and `git`, and the `claude` CLI to already be installed. The script is idempotent — safe to re-run after pulling changes to relink, pick up newly added plugins, or refresh the `CLAUDE_SANDBOX_SCRIPT` path (see below) after moving this checkout.
+> [!NOTE]
+> The script currently only works in bash.
+>
+> Requires `curl` and `git`, and the `claude` CLI to already be installed.
+>
+> The script is idempotent — safe to re-run after pulling changes to relink, pick up newly added plugins, or refresh the `CLAUDE_SANDBOX_SCRIPT` path (see below) after moving this checkout.
 
 ## Contained sessions
 
