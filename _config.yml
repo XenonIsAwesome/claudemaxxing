@@ -1,3 +1,11 @@
 title: claudemaxxing
 description: Personal Claude Code configuration — skills, commands, and settings installed via symlinks.
 theme: minima
+
+# These are Claude Code assets (skills, commands, settings), not site content -
+# without this, Jekyll turns every markdown file in them into a nav-cluttering page.
+exclude:
+  - skills/
+  - commands/
+  - misc/
+  - CLAUDE.md
