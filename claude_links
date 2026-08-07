@@ -5,6 +5,7 @@ misc/claude-tainer-handoff-hook.sh claude-tainer-handoff-hook.sh
 commands/claudify-project.md commands/claudify-project.md
 commands/update-claudification.md commands/update-claudification.md
 commands/claude-tainer.md commands/claude-tainer.md
+hooks/tmux-team-layout.py hooks/tmux-team-layout.py
 skills/find-skills skills/find-skills
 skills/graphify skills/graphify
 skills/plannotator-annotate skills/plannotator-annotate

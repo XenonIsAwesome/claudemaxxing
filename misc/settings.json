@@ -5,6 +5,31 @@
   "permissions": {
     "defaultMode": "acceptEdits"
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/tmux-team-layout.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/tmux-team-layout.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
   "respondToBashCommands": false,
   "statusLine": {
     "type": "command",
@@ -32,6 +57,7 @@
     }
   },
   "language": "English",
+  "effortLevel": "high",
   "voice": {
     "enabled": true,
     "mode": "hold"
