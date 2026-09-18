@@ -2,28 +2,14 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  "permissions": {
-    "defaultMode": "acceptEdits"
-  },
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/tmux-team-layout.py\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.claude/hooks/tmux-team-layout.py\"",
+            "command": "bash '/home/xenon/.claude/hooks/herdr-agent-state.sh' session",
             "timeout": 10
           }
         ]
@@ -66,5 +52,6 @@
   "theme": "dark",
   "autoCompactEnabled": true,
   "teammateMode": "auto",
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "respectGitignore": false
 }

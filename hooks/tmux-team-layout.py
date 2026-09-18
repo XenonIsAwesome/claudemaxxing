@@ -31,10 +31,10 @@ LOCK_PATH = os.path.join(HOOKS_DIR, ".tmux-team-layout.lock")
 LOG_PATH = os.path.join(HOOKS_DIR, ".tmux-team-layout.log")
 
 # --- tunables -----------------------------------------------------------
-TOP_FRACTION = 0.22       # main/lead bar height as a fraction of window height
+TOP_FRACTION = 0.5       # main/lead bar height as a fraction of window height
 TOP_MIN_LINES = 7
 TOP_MAX_LINES = 20
-MIN_PANE_WIDTH = 80        # wrap threshold: columns
+MIN_PANE_WIDTH = 50        # wrap threshold: columns
 MIN_PANE_HEIGHT = 15       # target only, not force-enforced for large N
 HARD_MIN_COL_WIDTH = 20    # never shrink columns narrower than this
 
