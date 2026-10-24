@@ -1,0 +1,134 @@
+{
+  "_comment": "Every value here is optional; missing keys fall back to built-in defaults.",
+  "icons": {
+    "house": "",
+    "git": "",
+    "worktree": "⧉",
+    "model": "✱",
+    "context": "󰧑",
+    "five_hour": "",
+    "weekly": "",
+    "session_duration": "",
+    "tokens_in": "",
+    "tokens_out": "",
+    "throughput": "●",
+    "ahead": "↑",
+    "behind": "↓"
+  },
+  "labels": {
+    "context": "ctx",
+    "five_hour": "5h",
+    "weekly": "7d",
+    "tokens_in": "in",
+    "tokens_out": "out",
+    "throughput_unit": "t/m",
+    "of": "of",
+    "resets": "resets",
+    "not_available": "n/a",
+    "default_model": "Claude",
+    "effort_separator": " · "
+  },
+  "colors": {
+    "text": "#c0caf5",
+    "dim": "#565f89",
+    "path": "#8ecbff",
+    "git": "#a8f5a2",
+    "session_id": "#565f89",
+    "session_duration": "#7dcfff",
+    "context_icon": "#bb9af7",
+    "five_hour_icon": "#7dcfff",
+    "weekly_icon": "#7aa2f7",
+    "tokens_in_icon": "#7dcfff",
+    "tokens_out_icon": "#bb9af7",
+    "throughput": "#7dcfff"
+  },
+  "bars": {
+    "caps": {
+      "left": "◖",
+      "right": "◗"
+    },
+    "fill": "█",
+    "track_color": "#27332e",
+    "color_stops": [
+      {
+        "from": 0,
+        "color": "#39ff88"
+      },
+      {
+        "from": 80,
+        "color": "#ffd84a"
+      },
+      {
+        "from": 91,
+        "color": "#ff5c7a"
+      }
+    ],
+    "context": {
+      "color_stops": null
+    },
+    "five_hour": {
+      "color_stops": null
+    },
+    "weekly": {
+      "color_stops": null
+    }
+  },
+  "border": {
+    "gradient": {
+      "from": "#39ff88",
+      "to": "#6b7280",
+      "swap_point": 0.5
+    },
+    "chars": {
+      "top_left": "╭",
+      "top_right": "╮",
+      "bottom_left": "╰",
+      "bottom_right": "╯",
+      "horizontal": "─",
+      "vertical": "│",
+      "tee_left": "├",
+      "tee_right": "┤"
+    }
+  },
+  "model_badge": {
+    "gradient": {
+      "from": "#e0af68",
+      "to": "#e0603c",
+      "swap_point": 1.0
+    },
+    "text_color": "#1a1b26",
+    "bold": true,
+    "caps": {
+      "left": "",
+      "right": ""
+    }
+  },
+  "sparkline": {
+    "chars": "▁▂▃▄▅▆▇█",
+    "empty_char": "─",
+    "color_from": "#39ff88",
+    "color_to": "#ff5c7a",
+    "history_samples": 120,
+    "sample_interval_seconds": 5
+  },
+  "git": {
+    "show_ahead_behind": true,
+    "show_worktree": true
+  },
+  "layout": {
+    "rows": [
+      "header",
+      "context",
+      "five_hour",
+      "weekly",
+      "footer"
+    ],
+    "min_width": 60,
+    "max_width": 120,
+    "side_margin": 4,
+    "right_column_width": 22,
+    "label_width": 3,
+    "show_session_id": true,
+    "show_session_duration": true
+  }
+}
