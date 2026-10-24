@@ -54,6 +54,7 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "autoCompactEnabled": true,
+  "switchModelsOnFlag": false,
   "teammateMode": "auto",
   "voiceEnabled": true,
   "respectGitignore": false
