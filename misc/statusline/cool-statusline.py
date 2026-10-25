@@ -111,7 +111,7 @@ DEFAULTS = {
     "layout": {
         "rows": ["header", "context", "usage", "footer"],
         "min_width": 60,
-        "max_width": 120,
+        "max_width": 1000,
         "side_margin": 4,
         "right_column_width": 22,
         "label_width": 3,

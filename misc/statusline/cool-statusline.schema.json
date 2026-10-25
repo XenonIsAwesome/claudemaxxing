@@ -577,7 +577,7 @@
         "max_width": {
           "type": "integer",
           "minimum": 20,
-          "default": 120,
+          "default": 1000,
           "description": "Maximum box width in columns."
         },
         "side_margin": {
