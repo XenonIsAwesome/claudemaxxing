@@ -1,7 +1,7 @@
 misc/settings.json settings.json
 misc/CLAUDE.md CLAUDE.md
-misc/cool-statusline.py cool-statusline.py
-misc/cool-statusline.json cool-statusline.json
+misc/statusline/cool-statusline.py cool-statusline.py
+misc/statusline/cool-statusline.json cool-statusline.json
 misc/statusline-command.sh statusline-command.sh
 misc/claude-tainer-handoff-hook.sh claude-tainer-handoff-hook.sh
 commands/claudify-project.md commands/claudify-project.md

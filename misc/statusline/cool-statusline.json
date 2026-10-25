@@ -119,8 +119,7 @@
     "rows": [
       "header",
       "context",
-      "five_hour",
-      "weekly",
+      "usage",
       "footer"
     ],
     "min_width": 60,

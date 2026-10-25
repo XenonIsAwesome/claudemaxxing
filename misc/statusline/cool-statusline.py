@@ -109,7 +109,7 @@ DEFAULTS = {
     },
     "git": {"show_ahead_behind": True, "show_worktree": True},
     "layout": {
-        "rows": ["header", "context", "five_hour", "weekly", "footer"],
+        "rows": ["header", "context", "usage", "footer"],
         "min_width": 60,
         "max_width": 120,
         "side_margin": 4,
@@ -491,6 +491,22 @@ def main():
             right += dim + "  " + label("resets") + " " + r.ljust(6) + R
         return bar_row(ic, lab, icon_color, p, right, stops)
 
+    USAGE_TAIL = 18  # width of a usage cell's "pct resets X" text
+
+    def usage_cell(ic, lab, icon_color, d, stops, cell_w):
+        """One compact `icon label bar pct resets X` cell, exactly `cell_w` cells wide."""
+        left = icon_color + ic + R + " " + dim + lab.ljust(label_w) + R + " "
+        if not d or d.get("used_percentage") is None:
+            na = dim + label("not_available") + R
+            return left + na + " " * max(0, cell_w - vlen(left) - vlen(na))
+        p = d["used_percentage"]
+        r = until(d.get("resets_at"))
+        right = fg(level_hex(p, stops)) + ("%d%%" % round(p)).rjust(4) + R
+        if r:
+            right += dim + " " + label("resets") + " " + r.ljust(6) + R
+        bar_w = max(4, cell_w - vlen(left) - vlen(right) - 1)
+        return left + pill_bar(p, bar_w, stops) + " " + right
+
     # ---- rows
     def row_header():
         g = git_info(cwd)
@@ -498,10 +514,13 @@ def main():
         return line(left, badge)
 
     def row_context():
-        right = (txt + "%s %s %s" % (fmt_tokens(used), label("of"), fmt_tokens(size)) + R
+        # compact "X/Y (pct%)" and a fixed width so the bar ends at the 7d bar's last char
+        right = (txt + "%s/%s" % (fmt_tokens(used), fmt_tokens(size)) + R
                  + dim + " (%d%%)" % round(ctx_pct) + R)
-        stops = stops_for("context")
-        return bar_row(icon("context"), label("context"), col("context_icon"), ctx_pct, right, stops)
+        right = " " * max(0, USAGE_TAIL - vlen(right)) + right
+        left = col("context_icon") + icon("context") + R + " " + dim + label("context").ljust(label_w) + R + " "
+        bar_w = inner - vlen(left) - vlen(right) - 2
+        return line(left + pill_bar(ctx_pct, bar_w, stops_for("context")) + " " + right)
 
     def row_five_hour():
         return usage_row(icon("five_hour"), label("five_hour"), col("five_hour_icon"), five,
@@ -510,6 +529,17 @@ def main():
     def row_weekly():
         return usage_row(icon("weekly"), label("weekly"), col("weekly_icon"), seven,
                          stops_for("weekly"))
+
+    def row_usage():
+        gap = 3
+        total = inner - 1 - gap  # line() always keeps one trailing space
+        a_w = total // 2
+        b_w = total - a_w
+        a = usage_cell(icon("five_hour"), label("five_hour"), col("five_hour_icon"), five,
+                       stops_for("five_hour"), a_w)
+        b = usage_cell(icon("weekly"), label("weekly"), col("weekly_icon"), seven,
+                       stops_for("weekly"), b_w)
+        return line(a + " " * gap + b)
 
     def row_footer():
         left = (col("tokens_in_icon") + icon("tokens_in") + R + dim + " " + label("tokens_in") + " " + R
@@ -525,6 +555,7 @@ def main():
         "context": row_context,
         "five_hour": row_five_hour,
         "weekly": row_weekly,
+        "usage": row_usage,
         "footer": row_footer,
     }
 
