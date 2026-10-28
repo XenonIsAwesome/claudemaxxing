@@ -10,6 +10,9 @@ Install:
 Config lookup order (first one found wins):
   --config PATH   |   $STATUSLINE_CONFIG   |   ~/.claude/statusline.json
   |   statusline.json next to this script
+Layout: every row is made of elements (run with --list-elements) placed in left / center /
+right groups; each element can be sized (columns, "N%", "auto", "flex"). The top and bottom
+border bars take elements too. See cool-statusline.schema.json for all options.
 Anything missing from your config falls back to the built-in defaults below, so the
 JSON only needs the keys you want to change.
 """
@@ -34,6 +37,8 @@ DEFAULTS = {
         "five_hour": "",
         "weekly": "",
         "session_duration": "",
+        "clock": "",
+        "cost": "$",
         "tokens_in": "",
         "tokens_out": "",
         "throughput": "●",
@@ -47,6 +52,7 @@ DEFAULTS = {
         "tokens_in": "in",
         "tokens_out": "out",
         "throughput_unit": "t/m",
+        "throughput_unit_sec": "t/s",
         "of": "of",
         "resets": "resets",
         "not_available": "n/a",
@@ -66,6 +72,11 @@ DEFAULTS = {
         "tokens_in_icon": "#7dcfff",
         "tokens_out_icon": "#bb9af7",
         "throughput": "#7dcfff",
+        "clock": "#7dcfff",
+        "cost": "#e0af68",
+        "lines_added": "#a8f5a2",
+        "lines_removed": "#ff5c7a",
+        "version": "#565f89",
     },
     "bars": {
         "caps": {"left": "◖", "right": "◗"},
@@ -109,14 +120,31 @@ DEFAULTS = {
     },
     "git": {"show_ahead_behind": True, "show_worktree": True},
     "layout": {
-        "rows": ["header", "context", "usage", "footer"],
+        # Each row is {"left": [...], "center": [...], "right": [...], "gap": N, "divider": bool}.
+        # A row may also be a bare list (= its "left" group). Items are element ids
+        # ("dir", "git", ...) or objects: {"id", "width", "weight", "align", ...}.
+        # Grid rows: {"columns": 1-5, "col_widths": [weights], "items": [{"id", "span", "col"}]}.
+        # width: N columns | "N%" | "auto" (natural size) | "flex" (share the leftover).
+        "rows": [
+            {"left": ["dir", "git"], "right": ["model"]},
+            {"left": [{"id": "context", "width": "flex"}]},
+            {"left": [{"id": "five_hour", "width": "flex"},
+                      {"id": "seven_day", "width": "flex"}], "gap": 3},
+            {"left": ["in_tok", "out_tok", "tok_per_min", "tok_per_sec", {"id": "throughput", "width": "flex"}]},
+        ],
+        # Top / bottom border bars take the same items (plus session_id, session_duration,
+        # clock, cost, lines, version, text) in left / center / right groups.
+        "top": {"left": [], "center": [], "right": ["session_id", "session_duration"]},
+        "bottom": {"left": [], "center": [], "right": []},
+        "gap": 2,
+        "border_gap": 2,
+        "row_dividers": True,
+        "equal_bars": False,  # bars in one row get the width of the narrowest (row-level override too)
+        "clock_format": "%H:%M",
         "min_width": 60,
         "max_width": 1000,
         "side_margin": 4,
-        "right_column_width": 22,
         "label_width": 3,
-        "show_session_id": True,
-        "show_session_duration": True,
     },
 }
 
@@ -368,6 +396,11 @@ def git_info(cwd):
 
 
 def term_width():
+    if "--columns" in sys.argv[:-1]:
+        try:
+            return int(sys.argv[sys.argv.index("--columns") + 1])
+        except ValueError:
+            pass
     try:
         with open("/dev/tty") as t:
             return os.get_terminal_size(t.fileno()).columns
@@ -400,20 +433,238 @@ def history(sid, tpm):
     return st.get("v", [])
 
 
+# ------------------------------------------------------------------- layout ----
+def truncate(s, w):
+    """Cut `s` to `w` visible cells, keeping ANSI codes intact."""
+    if w <= 0:
+        return ""
+    if vlen(s) <= w:
+        return s
+    out, seen = "", 0
+    for tok in re.split(r"(\x1b\[[0-9;]*m)", s):
+        if ANSI.fullmatch(tok):
+            out += tok
+        else:
+            take = tok[:max(0, w - seen)]
+            out += take
+            seen += len(take)
+    return out + R
+
+
+def fit(s, w, align="left"):
+    """Pad / truncate `s` to exactly `w` visible cells."""
+    s = truncate(s, w)
+    pad = w - vlen(s)
+    if pad <= 0:
+        return s
+    if align == "right":
+        return " " * pad + s
+    if align == "center":
+        return " " * (pad // 2) + s + " " * (pad - pad // 2)
+    return s + " " * pad
+
+
+def tail_cut(text, w):
+    """Shorten plain `text` to `w` cells keeping its end ('…/long/path')."""
+    return text if len(text) <= w else ("…" + text[len(text) - w + 1:] if w > 1 else text[-w:])
+
+
+def norm_item(it):
+    if isinstance(it, str):
+        return {"id": it}
+    return dict(it) if isinstance(it, dict) and "id" in it else None
+
+
+def norm_row(row):
+    if isinstance(row, list):
+        row = {"left": row}
+    return row if isinstance(row, dict) else {}
+
+
+def parse_width(spec, inner):
+    """-> ('fixed', n) | ('auto', None) | ('flex', None)"""
+    w = spec.get("width", "auto")
+    if isinstance(w, bool):
+        return "auto", None
+    if isinstance(w, (int, float)):
+        return "fixed", max(0, int(w))
+    w = str(w).strip().lower()
+    if w == "flex":
+        return "flex", None
+    if w.endswith("%"):
+        try:
+            return "fixed", int(inner * float(w[:-1]) / 100)
+        except ValueError:
+            return "auto", None
+    try:
+        return "fixed", max(0, int(w))
+    except ValueError:
+        return "auto", None
+
+
+def last_tps(sid, out_tokens, api_ms):
+    """Output tokens/sec of the latest response: delta of the cumulative output-token and
+    API-time counters since the previous refresh (None until a response has been seen)."""
+    path = os.path.join(os.environ.get("TMPDIR", "/tmp"), "claude-statusline-tps-%s.json" % (sid or "x"))
+    try:
+        with open(path) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    d_out, d_api = out_tokens - st.get("out", out_tokens), api_ms - st.get("api", api_ms)
+    if d_out > 0 and d_api > 0:
+        st["tps"] = d_out / (d_api / 1000.0)
+    st["out"], st["api"] = out_tokens, api_ms
+    try:
+        with open(path, "w") as f:
+            json.dump(st, f)
+    except Exception:
+        pass
+    return st.get("tps")
+
+
+# ------------------------------------------------------------------- studio ----
+ELEMENT_IDS = ["dir", "git", "model", "context", "five_hour", "seven_day", "in_tok", "out_tok",
+               "tok_per_min", "tok_per_sec", "throughput", "session_id", "session_duration",
+               "clock", "cost", "lines", "version", "text"]
+
+
+def studio(argv):
+    """Local config GUI: serves cool-statusline-studio.html; previews use this very script."""
+    import http.server
+    import secrets
+    import tempfile
+    import webbrowser
+
+    script = os.path.realpath(__file__)
+    page = open(os.path.join(os.path.dirname(script), "cool-statusline-studio.html"),
+                encoding="utf-8").read()
+    cfg_path = find_config_path(argv) or os.path.expanduser("~/.claude/cool-statusline.json")
+    token = secrets.token_hex(16)
+    sid = "studio-preview"
+    tmpdir = os.environ.get("TMPDIR", "/tmp")
+
+    def read_cfg():
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def sample(out_tokens, api_ms):
+        now = int(time.time())
+        return {
+            "session_id": sid, "cwd": os.getcwd(), "version": "2.1.0",
+            "model": {"display_name": "Sonnet 5.5"}, "effort": "high",
+            "context_window": {"context_window_size": 1000000, "used_percentage": 14,
+                               "current_usage": {"input_tokens": 140000},
+                               "total_input_tokens": 420000, "total_output_tokens": out_tokens},
+            "rate_limits": {"five_hour": {"used_percentage": 42, "resets_at": now + 6000},
+                            "seven_day": {"used_percentage": 85, "resets_at": now + 200000}},
+            "cost": {"total_duration_ms": 4980000, "total_api_duration_ms": api_ms,
+                     "total_cost_usd": 3.456, "total_lines_added": 120, "total_lines_removed": 30},
+        }
+
+    def render(layout, cols):
+        cfg = read_cfg()
+        cfg["layout"] = layout
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump(cfg, f)
+            cfg_file = f.name
+        try:
+            try:
+                os.remove(os.path.join(tmpdir, "claude-statusline-tps-%s.json" % sid))
+            except OSError:
+                pass
+            with open(os.path.join(tmpdir, "claude-statusline-%s.json" % sid), "w") as f:
+                json.dump({"t": time.time(), "v": [1500, 2600, 4000, 3200, 5700, 5200, 6100, 4300]}, f)
+            res = None
+            for out_t, api in ((50000, 100000), (50600, 110000)):  # 2nd call yields 60 t/s
+                res = subprocess.run([sys.executable, script, "--config", cfg_file, "--columns", str(cols)],
+                                     input=json.dumps(sample(out_t, api)), capture_output=True,
+                                     text=True, timeout=10)
+            return res.stdout or res.stderr
+        finally:
+            os.unlink(cfg_file)
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def send(self, code, body, ctype="application/json"):
+            b = body if isinstance(body, bytes) else body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype + "; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def host_ok(self):  # blocks DNS-rebinding
+            return self.headers.get("Host", "") in ("127.0.0.1:%d" % port, "localhost:%d" % port)
+
+        def do_GET(self):
+            if not self.host_ok():
+                return self.send(403, "{}")
+            if self.path == "/":
+                return self.send(200, page.replace("__TOKEN__", token), "text/html")
+            if self.path == "/api/state":
+                layout = deep_merge(copy.deepcopy(DEFAULTS["layout"]), read_cfg().get("layout", {}))
+                return self.send(200, json.dumps({"layout": layout, "defaults": DEFAULTS["layout"],
+                                                  "elements": ELEMENT_IDS, "path": cfg_path}))
+            self.send(404, "{}")
+
+        def do_POST(self):
+            if not self.host_ok() or self.headers.get("X-Token") != token:
+                return self.send(403, "{}")
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                if self.path == "/api/render":
+                    return self.send(200, json.dumps({"text": render(body["layout"], int(body["cols"]))}))
+                if self.path == "/api/save":
+                    cfg = read_cfg()
+                    cfg["layout"] = body["layout"]
+                    with open(cfg_path, "w", encoding="utf-8") as f:
+                        json.dump(cfg, f, indent=2, ensure_ascii=False)
+                        f.write("\n")
+                    return self.send(200, json.dumps({"saved": cfg_path}))
+            except Exception as e:
+                return self.send(500, json.dumps({"error": str(e)}))
+            self.send(404, "{}")
+
+    want = 8765
+    if "--port" in argv[:-1]:
+        want = int(argv[argv.index("--port") + 1])
+    try:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", want), Handler)
+    except OSError:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = srv.server_address[1]
+    url = "http://127.0.0.1:%d/" % port
+    print("Statusline Studio on %s  (editing %s)  -  Ctrl+C to stop" % (url, cfg_path))
+    if "--no-open" not in argv:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 # --------------------------------------------------------------------- main ----
 def main():
     global CFG
     argv = sys.argv[1:]
+    if "--studio" in argv:
+        studio(argv)
+        return
     if "--dump-config" in argv:
-        out = copy.deepcopy(DEFAULTS)
-        sys.stdout.write(json.dumps(out, indent=2, ensure_ascii=False) + "\n")
+        sys.stdout.write(json.dumps(copy.deepcopy(DEFAULTS), indent=2, ensure_ascii=False) + "\n")
         return
     CFG = load_config(argv)
     lay = CFG["layout"]
     dim, txt = col("dim"), col("text")
 
     try:
-        data = json.load(sys.stdin)
+        data = {} if "--list-elements" in argv else json.load(sys.stdin)
     except Exception:
         data = {}
 
@@ -426,8 +677,6 @@ def main():
     eff = data.get("effort")
     effort = eff.get("level") if isinstance(eff, dict) else eff
     effort = effort or os.environ.get("CLAUDE_CODE_EFFORT_LEVEL")
-    badge = gradient_badge(icon("model") + " " + model_name
-                           + (label("effort_separator") + str(effort) if effort else ""))
 
     cw = data.get("context_window") or {}
     size = cw.get("context_window_size") or 200_000
@@ -445,141 +694,331 @@ def main():
 
     t_in = cw.get("total_input_tokens") or 0
     t_out = cw.get("total_output_tokens") or 0
-    ms = (data.get("cost") or {}).get("total_duration_ms") or 0
+    cost = data.get("cost") or {}
+    ms = cost.get("total_duration_ms") or 0
     tpm = (t_in + t_out) / max(ms / 60000.0, 1.0)
     sid = data.get("session_id") or ""
     hist = history(sid, tpm)
+    api_ms = cost.get("total_api_duration_ms")
+    tps = last_tps(sid, t_out, api_ms) if api_ms else None
 
     width = max(int(lay["min_width"]), min(term_width() - int(lay["side_margin"]), int(lay["max_width"])))
     inner = width - 4
+    label_w = int(lay["label_width"])
 
     bc = CFG["border"]["chars"]
     bg_ = CFG["border"]["gradient"]
 
     def gcol(i):
-        c = gradient_at(i / max(1, width - 1), bg_["from"], bg_["to"], bg_["swap_point"])
-        return fg(c)
+        return fg(gradient_at(i / max(1, width - 1), bg_["from"], bg_["to"], bg_["swap_point"]))
 
     def gtext(txt_, start):
         return "".join(gcol(start + k) + ch for k, ch in enumerate(txt_)) + R
 
-    def line(left, right=""):
-        gap = inner - vlen(left) - vlen(right)
-        return (gcol(0) + bc["vertical"] + " " + R + left + " " * max(1, gap) + right
-                + gcol(width - 1) + " " + bc["vertical"] + R)
+    # ---- elements: fn(w, o) -> str. w=None asks for the natural size; otherwise the
+    # result is stretched/shortened toward `w` (the caller pads/truncates the rest).
+    def flag(o, k, default=True):
+        return bool(o.get(k, default))
+
+    def bar_element(ic, lab, icon_color, stops, pct, tail, w, o):
+        left = ""
+        if flag(o, "show_icon"):
+            left += icon_color + ic + R + " "
+        if flag(o, "show_label"):
+            left += dim + str(o.get("label", lab)).ljust(label_w) + R + " "
+        if pct is None:
+            return left + dim + label("not_available") + R
+        bar_w = (int(o.get("bar_width", 12)) if w is None
+                 else w - vlen(left) - vlen(tail) - 1)
+        if w is not None:
+            o["_measured"] = bar_w
+            bar_w = o.get("_bar", bar_w)
+        return left + pill_bar(pct, max(4, bar_w), stops) + " " + tail
+
+    def usage_el(key, ic, lab, icon_color, d):
+        def el(w, o):
+            stops = stops_for(key)
+            if not d or d.get("used_percentage") is None:
+                return bar_element(icon(ic), lab, col(icon_color), stops, None, "", w, o)
+            p = d["used_percentage"]
+            tail = fg(level_hex(p, stops)) + ("%d%%" % round(p)).rjust(4) + R
+            r = until(d.get("resets_at"))
+            if r and flag(o, "show_tail"):
+                tail += dim + " " + label("resets") + " " + r.ljust(6) + R
+            return bar_element(icon(ic), lab, col(icon_color), stops, p, tail, w, o)
+        return el
+
+    def el_context(w, o):
+        if flag(o, "show_tail"):
+            tail = (txt + "%s/%s" % (fmt_tokens(used), fmt_tokens(size)) + R
+                    + dim + " (%d%%)" % round(ctx_pct) + R)
+            tail = " " * max(0, 18 - vlen(tail)) + tail  # same width as a usage tail
+        else:
+            tail = fg(level_hex(ctx_pct, stops_for("context"))) + ("%d%%" % round(ctx_pct)).rjust(4) + R
+        return bar_element(icon("context"), label("context"), col("context_icon"),
+                           stops_for("context"), ctx_pct, tail, w, o)
+
+    def el_dir(w, o):
+        text = shown_dir if w is None else tail_cut(shown_dir, max(1, w - 2))
+        return col("path") + icon("house") + " " + text + R
+
+    git_cache = []
+
+    def el_git(w, o):
+        if not git_cache:
+            git_cache.append(git_info(cwd))
+        return git_cache[0]
+
+    def el_model(w, o):
+        name = icon("model") + " " + model_name
+        if effort and flag(o, "show_effort"):
+            name += label("effort_separator") + str(effort)
+        if w is not None:
+            mb = CFG["model_badge"]
+            room = w - len(mb["caps"]["left"]) - len(mb["caps"]["right"]) - 2
+            name = name[:max(1, room)]
+        return gradient_badge(name)
+
+    def el_in(w, o):
+        return (col("tokens_in_icon") + icon("tokens_in") + R + dim + " " + label("tokens_in") + " " + R
+                + txt + fmt_tokens(t_in) + R)
+
+    def el_out(w, o):
+        return (col("tokens_out_icon") + icon("tokens_out") + R + dim + " " + label("tokens_out") + " " + R
+                + txt + fmt_tokens(t_out) + R)
+
+    def el_tpm(w, o):
+        return (col("throughput") + icon("throughput") + " " + fmt_tokens(tpm) + " "
+                + label("throughput_unit") + R)
+
+    def el_tps(w, o):
+        return (col("throughput") + icon("throughput") + " "
+                + (fmt_tokens(tps) if tps is not None else label("not_available")) + " "
+                + label("throughput_unit_sec") + R)
+
+    def el_spark(w, o):
+        return sparkline(hist, int(o.get("bar_width", 20)) if w is None else w)
+
+    def el_sid(w, o):
+        return col("session_id") + sid + R if sid else ""
+
+    def el_dur(w, o):
+        return col("session_duration") + icon("session_duration") + " " + dur(ms) + R if ms else ""
+
+    def el_clock(w, o):
+        return col("clock") + icon("clock") + " " + time.strftime(o.get("format", lay["clock_format"])) + R
+
+    def el_cost(w, o):
+        c = cost.get("total_cost_usd")
+        return col("cost") + icon("cost") + "%.2f" % c + R if c is not None else ""
+
+    def el_lines(w, o):
+        a, r = cost.get("total_lines_added"), cost.get("total_lines_removed")
+        if a is None and r is None:
+            return ""
+        return (fg(CFG["colors"]["lines_added"]) + "+%d" % (a or 0) + R + " "
+                + fg(CFG["colors"]["lines_removed"]) + "-%d" % (r or 0) + R)
+
+    def el_version(w, o):
+        return col("version") + "v" + str(data["version"]) + R if data.get("version") else ""
+
+    def el_text(w, o):
+        return fg(o["color"]) + str(o.get("text", "")) + R if o.get("color") else dim + str(o.get("text", "")) + R
+
+    ELEMENTS = {
+        "dir": el_dir, "git": el_git, "model": el_model, "context": el_context,
+        "five_hour": usage_el("five_hour", "five_hour", label("five_hour"), "five_hour_icon", five),
+        "seven_day": usage_el("weekly", "weekly", label("weekly"), "weekly_icon", seven),
+        "in_tok": el_in, "out_tok": el_out, "tok_per_min": el_tpm, "tok_per_sec": el_tps, "throughput": el_spark,
+        "session_id": el_sid, "session_duration": el_dur, "clock": el_clock,
+        "cost": el_cost, "lines": el_lines, "version": el_version, "text": el_text,
+    }
+    ELEMENTS["weekly"] = ELEMENTS["seven_day"]  # old name
+
+    if "--list-elements" in argv:
+        sys.stdout.write("\n".join(ELEMENTS) + "\n")
+        return
+
+    DEFAULT_OPTS = {"show_icon": True, "show_label": True, "show_tail": True, "show_effort": True}
+
+    def build_items(items, keep_empty=False):
+        """-> [{'o': opts, 'nat': str}] for the items that exist and render something."""
+        out = []
+        for raw in items or []:
+            o = norm_item(raw)
+            if not o or o["id"] not in ELEMENTS:
+                continue
+            o = {**DEFAULT_OPTS, **o}
+            try:
+                nat = ELEMENTS[o["id"]](None, o)
+            except Exception:
+                continue
+            if vlen(nat) or keep_empty:
+                out.append({"o": o, "nat": nat, "fn": ELEMENTS[o["id"]]})
+        return out
+
+    # ---- rows
+    def equalize(row, cells):
+        """equal_bars: render every bar in the row as wide as the narrowest one."""
+        if not row.get("equal_bars", lay["equal_bars"]):
+            return
+        for it, w in cells:
+            it["o"].pop("_bar", None)
+            it["fn"](w, it["o"])
+        ms_ = [it["o"]["_measured"] for it, _ in cells if "_measured" in it["o"]]
+        if len(ms_) > 1:
+            for it, _ in cells:
+                if "_measured" in it["o"]:
+                    it["o"]["_bar"] = max(4, min(ms_))
+
+    def compose_grid(row):
+        """Grid row: `columns` (1-5) equal/weighted columns; each item takes `span` of them.
+        Items fill left to right and wrap onto a new line; `col` (1-based) pins a start column."""
+        ncol = max(1, min(5, int(row["columns"])))
+        gap = int(row.get("gap", lay["gap"]))
+        raw = row.get("items")
+        if raw is None:
+            raw = [i for g in ("left", "center", "right") for i in row.get(g, [])]
+        items = build_items(raw, keep_empty=True)
+        if not items:
+            return []
+        ws = row.get("col_widths") or [1] * ncol
+        ws = [max(1, int(x)) for x in list(ws)[:ncol]] + [1] * max(0, ncol - len(ws))
+        avail = inner - gap * (ncol - 1)
+        cols, acc = [], 0
+        for k, wt in enumerate(ws):
+            c = avail - acc if k == ncol - 1 else int(avail * wt / sum(ws))
+            cols.append(max(1, c))
+            acc += cols[-1]
+        lines_, cur, pos = [], [], 0  # cur: [(start_col, span, item)]
+
+        def flush():
+            nonlocal cur, pos
+            if cur:
+                lines_.append(cur)
+            cur, pos = [], 0
+        for it in items:
+            span = max(1, min(ncol, int(it["o"].get("span", 1))))
+            start = pos
+            if it["o"].get("col"):
+                start = max(0, min(ncol - span, int(it["o"]["col"]) - 1))
+                if start < pos:
+                    flush()
+                    start = max(0, min(ncol - span, int(it["o"]["col"]) - 1))
+            elif start + span > ncol:
+                flush()
+                start = 0
+            cur.append((start, span, it))
+            pos = start + span
+        flush()
+        equalize(row, [(it, sum(cols[st:st + sp]) + gap * (sp - 1)) for ln in lines_ for st, sp, it in ln])
+        out_ = []
+        for ln in lines_:
+            text, at = "", 0  # at: column index already written
+            for start, span, it in ln:
+                text += (" " * (sum(cols[at:start]) + gap * (start - at)))
+                w = sum(cols[start:start + span]) + gap * (span - 1)
+                text += fit(it["fn"](w, it["o"]), w, it["o"].get("align", "left"))
+                text += " " * gap if start + span < ncol else ""
+                at = start + span
+            out_.append(fit(text, inner))
+        return out_
+
+    def compose_row(row):
+        if row.get("columns"):
+            return compose_grid(row)
+        gap = int(row.get("gap", lay["gap"]))
+        groups = [build_items(row.get(g)) for g in ("left", "center", "right")]
+        items = [it for g in groups for it in g]
+        if not items:
+            return []
+        n_gaps = (len(items) - 1) * gap
+        kinds = []
+        for it in items:
+            kind, val = parse_width(it["o"], inner)
+            if kind == "auto":
+                kind, val = "fixed", vlen(it["nat"])
+            kinds.append([kind, val])
+        flex_ix = [i for i, k in enumerate(kinds) if k[0] == "flex"]
+        fixed = sum(k[1] for k in kinds if k[0] == "fixed")
+        left_over = inner - fixed - n_gaps
+        if flex_ix:
+            weights = [max(1, int(items[i]["o"].get("weight", 1))) for i in flex_ix]
+            tot, given = sum(weights), 0
+            for j, i in enumerate(flex_ix):
+                share = (left_over - given if j == len(flex_ix) - 1
+                         else int(left_over * weights[j] / tot))
+                share = max(4, share)
+                kinds[i][1] = share
+                given += share
+        equalize(row, [(it, k[1]) for it, k in zip(items, kinds)])
+        rendered = []
+        for it, (_, w) in zip(items, kinds):
+            align = it["o"].get("align", "left")
+            rendered.append(fit(it["fn"](w, it["o"]), w, align))
+
+        gs, k = [], 0
+        for g in groups:
+            gs.append((" " * gap).join(rendered[k:k + len(g)]))
+            k += len(g)
+        if flex_ix:
+            line_ = (" " * gap).join(s for s, g in zip(gs, groups) if g)
+        else:
+            lw, cw_, rw = (vlen(s) for s in gs)
+            line_ = gs[0]
+            if groups[1]:
+                start = max(lw + (gap if groups[0] else 0), (inner - cw_) // 2)
+                start = min(start, inner - rw - (gap if groups[2] else 0) - cw_)
+                line_ = fit(line_, max(start, lw), "left") + gs[1]
+            if groups[2]:
+                line_ = fit(line_, inner - rw, "left") + gs[2]
+        return [fit(line_, inner)]
+
+    def boxed(content):
+        return gcol(0) + bc["vertical"] + " " + R + content + gcol(width - 1) + " " + bc["vertical"] + R
 
     def sep():
         return gtext(bc["tee_left"] + bc["horizontal"] * (width - 2) + bc["tee_right"], 0)
 
-    right_w = int(lay["right_column_width"])
-    label_w = int(lay["label_width"])
+    # ---- top / bottom border bars
+    def border(side, left_c, right_c):
+        spec = lay.get(side) or {}
+        g = int(lay["border_gap"])
+        segs = []
+        for name in ("left", "center", "right"):
+            items = build_items(spec.get(name))
+            if items:
+                body = (" " * g).join(it["nat"] for it in items)
+                segs.append((name, " " + truncate(body, width - 6) + " "))
+        placed = []
+        for name, s in segs:
+            if name == "left":
+                start = 2
+            elif name == "right":
+                start = width - 2 - vlen(s)
+            else:
+                start = (width - vlen(s)) // 2
+            placed.append((max(2, start), s))
+        out, pos = gtext(left_c + "", 0), 1
+        for start, s in sorted(placed):
+            if start < pos:
+                continue  # overlaps an earlier group
+            out += gtext(bc["horizontal"] * (start - pos), pos) + s
+            pos = start + vlen(s)
+        return out + gtext(bc["horizontal"] * max(0, width - 1 - pos) + right_c, pos)
 
-    def bar_row(ic, lab, icon_color, pct, right_text, stops):
-        right_text = " " * max(0, right_w - vlen(right_text)) + right_text
-        left = icon_color + ic + R + " " + dim + lab.ljust(label_w) + R + " "
-        bar_w = inner - vlen(left) - vlen(right_text) - 3
-        return line(left + pill_bar(pct, bar_w, stops) + " ", right_text)
-
-    def usage_row(ic, lab, icon_color, d, stops):
-        if not d or d.get("used_percentage") is None:
-            return line(icon_color + ic + R + " " + dim + lab.ljust(label_w) + "  "
-                        + label("not_available") + R)
-        p = d["used_percentage"]
-        r = until(d.get("resets_at"))
-        right = fg(level_hex(p, stops)) + ("%d%%" % round(p)).rjust(4) + R
-        if r:
-            right += dim + "  " + label("resets") + " " + r.ljust(6) + R
-        return bar_row(ic, lab, icon_color, p, right, stops)
-
-    USAGE_TAIL = 18  # width of a usage cell's "pct resets X" text
-
-    def usage_cell(ic, lab, icon_color, d, stops, cell_w):
-        """One compact `icon label bar pct resets X` cell, exactly `cell_w` cells wide."""
-        left = icon_color + ic + R + " " + dim + lab.ljust(label_w) + R + " "
-        if not d or d.get("used_percentage") is None:
-            na = dim + label("not_available") + R
-            return left + na + " " * max(0, cell_w - vlen(left) - vlen(na))
-        p = d["used_percentage"]
-        r = until(d.get("resets_at"))
-        right = fg(level_hex(p, stops)) + ("%d%%" % round(p)).rjust(4) + R
-        if r:
-            right += dim + " " + label("resets") + " " + r.ljust(6) + R
-        bar_w = max(4, cell_w - vlen(left) - vlen(right) - 1)
-        return left + pill_bar(p, bar_w, stops) + " " + right
-
-    # ---- rows
-    def row_header():
-        g = git_info(cwd)
-        left = col("path") + icon("house") + " " + shown_dir + R + ("  " + g if g else "")
-        return line(left, badge)
-
-    def row_context():
-        # compact "X/Y (pct%)" and a fixed width so the bar ends at the 7d bar's last char
-        right = (txt + "%s/%s" % (fmt_tokens(used), fmt_tokens(size)) + R
-                 + dim + " (%d%%)" % round(ctx_pct) + R)
-        right = " " * max(0, USAGE_TAIL - vlen(right)) + right
-        left = col("context_icon") + icon("context") + R + " " + dim + label("context").ljust(label_w) + R + " "
-        bar_w = inner - vlen(left) - vlen(right) - 2
-        return line(left + pill_bar(ctx_pct, bar_w, stops_for("context")) + " " + right)
-
-    def row_five_hour():
-        return usage_row(icon("five_hour"), label("five_hour"), col("five_hour_icon"), five,
-                         stops_for("five_hour"))
-
-    def row_weekly():
-        return usage_row(icon("weekly"), label("weekly"), col("weekly_icon"), seven,
-                         stops_for("weekly"))
-
-    def row_usage():
-        gap = 3
-        total = inner - 1 - gap  # line() always keeps one trailing space
-        a_w = total // 2
-        b_w = total - a_w
-        a = usage_cell(icon("five_hour"), label("five_hour"), col("five_hour_icon"), five,
-                       stops_for("five_hour"), a_w)
-        b = usage_cell(icon("weekly"), label("weekly"), col("weekly_icon"), seven,
-                       stops_for("weekly"), b_w)
-        return line(a + " " * gap + b)
-
-    def row_footer():
-        left = (col("tokens_in_icon") + icon("tokens_in") + R + dim + " " + label("tokens_in") + " " + R
-                + txt + fmt_tokens(t_in) + R
-                + "  " + col("tokens_out_icon") + icon("tokens_out") + R + dim + " "
-                + label("tokens_out") + " " + R + txt + fmt_tokens(t_out) + R
-                + "  " + col("throughput") + icon("throughput") + " " + fmt_tokens(tpm) + " "
-                + label("throughput_unit") + R + "  ")
-        return line(left + sparkline(hist, inner - vlen(left) - 1))
-
-    builders = {
-        "header": row_header,
-        "context": row_context,
-        "five_hour": row_five_hour,
-        "weekly": row_weekly,
-        "usage": row_usage,
-        "footer": row_footer,
-    }
-
-    # ---- top / bottom borders
-    tag = ""
-    if lay.get("show_session_id") and sid:
-        tag += col("session_id") + sid + R
-    if lay.get("show_session_duration") and ms:
-        tag += ("  " if tag else "") + col("session_duration") + icon("session_duration") + " " + dur(ms) + R
-    if tag:
-        a = max(1, width - 2 - vlen(tag) - 3)
-        top = (gtext(bc["top_left"] + bc["horizontal"] * a, 0) + " " + tag + " "
-               + gtext(bc["horizontal"] + bc["top_right"], width - 2))
-    else:
-        top = gtext(bc["top_left"] + bc["horizontal"] * (width - 2) + bc["top_right"], 0)
-    bottom = gtext(bc["bottom_left"] + bc["horizontal"] * (width - 2) + bc["bottom_right"], 0)
-
-    out = [top]
-    names = [n for n in lay["rows"] if n in builders]
-    for i, n in enumerate(names):
-        if i:
+    out = [border("top", bc["top_left"], bc["top_right"])]
+    first = True
+    for raw in lay["rows"]:
+        row = norm_row(raw)
+        content = compose_row(row)
+        if not content:
+            continue
+        if not first and row.get("divider", lay["row_dividers"]):
             out.append(sep())
-        out.append(builders[n]())
-    out.append(bottom)
+        out.extend(boxed(c) for c in content)
+        first = False
+    out.append(border("bottom", bc["bottom_left"], bc["bottom_right"]))
     sys.stdout.write("\n".join(out) + "\n")
 
 

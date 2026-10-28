@@ -9,6 +9,8 @@
     "five_hour": "",
     "weekly": "",
     "session_duration": "",
+    "clock": "",
+    "cost": "$",
     "tokens_in": "",
     "tokens_out": "",
     "throughput": "●",
@@ -26,7 +28,8 @@
     "resets": "resets",
     "not_available": "n/a",
     "default_model": "Claude",
-    "effort_separator": " · "
+    "effort_separator": " · ",
+    "throughput_unit_sec": "t/s"
   },
   "colors": {
     "text": "#c0caf5",
@@ -40,7 +43,12 @@
     "weekly_icon": "#7aa2f7",
     "tokens_in_icon": "#7dcfff",
     "tokens_out_icon": "#bb9af7",
-    "throughput": "#7dcfff"
+    "throughput": "#7dcfff",
+    "clock": "#7dcfff",
+    "cost": "#e0af68",
+    "lines_added": "#a8f5a2",
+    "lines_removed": "#ff5c7a",
+    "version": "#565f89"
   },
   "bars": {
     "caps": {
@@ -117,17 +125,66 @@
   },
   "layout": {
     "rows": [
-      "header",
-      "context",
-      "usage",
-      "footer"
+      {
+        "left": [
+          "dir",
+          "git"
+        ],
+        "right": [
+          "model"
+        ]
+      },
+      {
+        "columns": 3,
+        "gap": 3,
+        "items": [
+          {
+            "id": "context",
+            "show_tail": false
+          },
+          "five_hour",
+          "seven_day"
+        ],
+        "col_widths": [
+          2,
+          3,
+          3
+        ]
+      },
+      {
+        "left": [
+          "in_tok",
+          "out_tok",
+          "tok_per_min",
+          "tok_per_sec",
+          {
+            "id": "throughput",
+            "width": "flex"
+          }
+        ]
+      }
     ],
+    "top": {
+      "left": [],
+      "center": [],
+      "right": [
+        "session_id",
+        "session_duration"
+      ]
+    },
+    "bottom": {
+      "left": [],
+      "center": [],
+      "right": []
+    },
+    "gap": 2,
+    "border_gap": 2,
+    "row_dividers": true,
+    "clock_format": "%H:%M",
     "min_width": 60,
     "max_width": 1000,
     "side_margin": 4,
-    "right_column_width": 22,
     "label_width": 3,
-    "show_session_id": true,
-    "show_session_duration": true
+    "equal_bars": false
   }
 }

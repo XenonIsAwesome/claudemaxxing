@@ -81,6 +81,16 @@
           "type": "string",
           "description": "Symbol for commits behind upstream.",
           "default": "↓"
+        },
+        "clock": {
+          "type": "string",
+          "description": "Icon in front of the clock element.",
+          "default": ""
+        },
+        "cost": {
+          "type": "string",
+          "description": "Prefix of the cost element.",
+          "default": "$"
         }
       },
       "description": "Glyphs (Nerd Font). Use an empty string to hide an icon."
@@ -143,6 +153,11 @@
           "type": "string",
           "description": "Text between the model name and the effort level in the badge.",
           "default": " · "
+        },
+        "throughput_unit_sec": {
+          "type": "string",
+          "default": "t/s",
+          "description": "Unit label of the tok_per_sec element."
         }
       },
       "description": "All text shown in the statusline."
@@ -210,6 +225,31 @@
           "$ref": "#/definitions/color",
           "description": "Throughput figure in the footer.",
           "default": "#7dcfff"
+        },
+        "clock": {
+          "$ref": "#/definitions/color",
+          "description": "Clock element.",
+          "default": "#7dcfff"
+        },
+        "cost": {
+          "$ref": "#/definitions/color",
+          "description": "Cost element.",
+          "default": "#e0af68"
+        },
+        "lines_added": {
+          "$ref": "#/definitions/color",
+          "description": "Lines-changed element, added count.",
+          "default": "#a8f5a2"
+        },
+        "lines_removed": {
+          "$ref": "#/definitions/color",
+          "description": "Lines-changed element, removed count.",
+          "default": "#ff5c7a"
+        },
+        "version": {
+          "$ref": "#/definitions/color",
+          "description": "Claude Code version element.",
+          "default": "#565f89"
         }
       },
       "description": "Text and icon colors (#rrggbb)."
@@ -546,27 +586,195 @@
     "layout": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Box layout: rows, top/bottom bars, sizes.",
       "properties": {
         "rows": {
           "type": "array",
-          "uniqueItems": true,
-          "default": [
-            "header",
-            "context",
-            "five_hour",
-            "weekly",
-            "footer"
-          ],
-          "description": "Rows to draw, top to bottom. Remove a name to hide that row.",
           "items": {
-            "enum": [
-              "header",
-              "context",
-              "five_hour",
-              "weekly",
-              "footer"
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/item"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "left": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/item"
+                    }
+                  },
+                  "center": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/item"
+                    }
+                  },
+                  "right": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/item"
+                    }
+                  },
+                  "gap": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Columns between items in this row."
+                  },
+                  "divider": {
+                    "type": "boolean",
+                    "description": "Draw a divider line above this row."
+                  },
+                  "columns": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Make this a grid row with N equal columns (max 5)."
+                  },
+                  "col_widths": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "description": "Relative column widths, e.g. [2,1,1]."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/item"
+                    },
+                    "description": "Grid rows: items placed left to right, wrapping onto new lines."
+                  },
+                  "equal_bars": {
+                    "type": "boolean",
+                    "description": "Override layout.equal_bars for this row."
+                  }
+                }
+              }
             ]
-          }
+          },
+          "default": [
+            {
+              "left": [
+                "dir",
+                "git"
+              ],
+              "right": [
+                "model"
+              ]
+            },
+            {
+              "left": [
+                {
+                  "id": "context",
+                  "width": "flex"
+                }
+              ]
+            },
+            {
+              "left": [
+                {
+                  "id": "five_hour",
+                  "width": "flex"
+                },
+                {
+                  "id": "seven_day",
+                  "width": "flex"
+                }
+              ],
+              "gap": 3
+            },
+            {
+              "left": [
+                "in_tok",
+                "out_tok",
+                "tok_per_min",
+                {
+                  "id": "throughput",
+                  "width": "flex"
+                }
+              ]
+            }
+          ],
+          "description": "Rows top to bottom. Each row has left / center / right groups of elements; order inside a group is the draw order."
+        },
+        "top": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            },
+            "center": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            },
+            "right": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            }
+          },
+          "description": "Items on the top border bar."
+        },
+        "bottom": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            },
+            "center": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            },
+            "right": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/item"
+              }
+            }
+          },
+          "description": "Items on the bottom border bar."
+        },
+        "gap": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2,
+          "description": "Default columns between items in a row."
+        },
+        "border_gap": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2,
+          "description": "Columns between items on the top/bottom bars."
+        },
+        "row_dividers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draw divider lines between rows."
+        },
+        "clock_format": {
+          "type": "string",
+          "default": "%H:%M",
+          "description": "Default strftime format of the clock element."
         },
         "min_width": {
           "type": "integer",
@@ -586,30 +794,18 @@
           "default": 4,
           "description": "Columns subtracted from the terminal width."
         },
-        "right_column_width": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 22,
-          "description": "Fixed width of the text to the right of each bar, so all bars end equal."
-        },
         "label_width": {
           "type": "integer",
           "minimum": 0,
           "default": 3,
-          "description": "Width the row labels are padded to."
+          "description": "Width bar labels are padded to."
         },
-        "show_session_id": {
+        "equal_bars": {
           "type": "boolean",
-          "default": true,
-          "description": "Show the session id in the top border."
-        },
-        "show_session_duration": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the session duration in the top border."
+          "default": false,
+          "description": "Render all bars in a row at the width of the narrowest one."
         }
-      },
-      "description": "Box layout and which rows are drawn."
+      }
     }
   },
   "definitions": {
@@ -643,6 +839,147 @@
       "items": {
         "$ref": "#/definitions/colorStop"
       }
+    },
+    "item": {
+      "oneOf": [
+        {
+          "enum": [
+            "dir",
+            "git",
+            "model",
+            "context",
+            "five_hour",
+            "seven_day",
+            "in_tok",
+            "out_tok",
+            "tok_per_min",
+            "tok_per_sec",
+            "throughput",
+            "session_id",
+            "session_duration",
+            "clock",
+            "cost",
+            "lines",
+            "version",
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "enum": [
+                "dir",
+                "git",
+                "model",
+                "context",
+                "five_hour",
+                "seven_day",
+                "in_tok",
+                "out_tok",
+                "tok_per_min",
+                "tok_per_sec",
+                "throughput",
+                "session_id",
+                "session_duration",
+                "clock",
+                "cost",
+                "lines",
+                "version",
+                "text"
+              ],
+              "description": "Element to draw."
+            },
+            "width": {
+              "description": "Columns (integer), a percentage like \"50%\", \"auto\" (natural size, default) or \"flex\" (share the leftover space).",
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(auto|flex|[0-9]+%)$"
+                }
+              ],
+              "default": "auto"
+            },
+            "weight": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Share of the leftover space among flex items."
+            },
+            "align": {
+              "enum": [
+                "left",
+                "center",
+                "right"
+              ],
+              "default": "left",
+              "description": "Alignment of the content inside its width."
+            },
+            "bar_width": {
+              "type": "integer",
+              "minimum": 4,
+              "description": "Bar / sparkline width when the item is not stretched (auto)."
+            },
+            "show_icon": {
+              "type": "boolean",
+              "default": true,
+              "description": "Bars: show the icon."
+            },
+            "show_label": {
+              "type": "boolean",
+              "default": true,
+              "description": "Bars: show the label."
+            },
+            "show_tail": {
+              "type": "boolean",
+              "default": true,
+              "description": "Bars: show the 'resets in' / used-of-size text."
+            },
+            "show_effort": {
+              "type": "boolean",
+              "default": true,
+              "description": "model: show the effort level."
+            },
+            "label": {
+              "type": "string",
+              "description": "Bars: override the label."
+            },
+            "format": {
+              "type": "string",
+              "description": "clock: strftime format."
+            },
+            "text": {
+              "type": "string",
+              "description": "text: literal text."
+            },
+            "color": {
+              "$ref": "#/definitions/color",
+              "description": "text: color."
+            },
+            "span": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 1,
+              "description": "Grid rows: how many columns this item spans."
+            },
+            "col": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Grid rows: pin the item to this start column (1-based)."
+            }
+          }
+        }
+      ]
     }
   }
 }

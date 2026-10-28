@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Statusline Studio</title>
+<style>
+:root{--bg:#16161e;--panel:#1f2335;--panel2:#292e42;--line:#3b4261;--fg:#c0caf5;--dim:#7a84b0;--acc:#7aa2f7;--ok:#39ff88;--bad:#ff5c7a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;flex:1}
+header .path{color:var(--dim);font-size:12px}
+button,select,input{font:inherit;color:var(--fg);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);color:#10131f;border-color:var(--acc);font-weight:600}
+input[type=number]{width:64px}input[type=text]{width:100%}input[type=checkbox]{width:auto}
+#status{font-size:12px;color:var(--dim);min-width:90px;text-align:right}
+#status.dirty{color:#e0af68}#status.ok{color:var(--ok)}#status.err{color:var(--bad)}
+#preview-wrap{padding:12px 16px;background:#0f0f14;border-bottom:1px solid var(--line);overflow-x:auto}
+#preview{font:13px/1.15 "JetBrainsMono Nerd Font","JetBrains Mono NF","Symbols Nerd Font Mono","FiraCode Nerd Font",ui-monospace,monospace;white-space:pre;background:#1a1b26;padding:10px;border-radius:8px;display:inline-block;min-width:100%}
+.pbar{display:flex;gap:10px;align-items:center;margin-bottom:8px;color:var(--dim);font-size:12px}
+.pbar input[type=range]{width:240px;padding:0}
+main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;padding:16px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:18px 0 8px}
+h2:first-child{margin-top:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.card.sel{border-color:var(--acc)}
+.rowhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;font-size:12px;color:var(--dim)}
+.rowhead .sp{flex:1}
+.rowhead label{display:flex;gap:4px;align-items:center}
+.zones{display:flex;gap:8px}
+.zone-wrap{flex:1;min-width:0}
+.zone-wrap small{display:block;color:var(--dim);font-size:11px;margin-bottom:2px}
+.zone{min-height:38px;border:1px dashed var(--line);border-radius:8px;padding:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;align-content:flex-start}
+.zone.over{border-color:var(--acc);background:#7aa2f71a}
+.zone.grid{display:grid;gap:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:grab;user-select:none;font-size:13px;white-space:nowrap;overflow:hidden}
+.chip.sel{border-color:var(--acc);background:#7aa2f733}
+.chip .b{font-size:10px;color:var(--dim)}
+.zone.grid .chip{width:100%;justify-content:space-between}
+.addsel{width:34px;padding:2px;color:var(--dim)}
+.palette{display:flex;flex-wrap:wrap;gap:4px}
+aside .card label{display:block;font-size:12px;color:var(--dim);margin:8px 0 2px}
+aside .card .inline{display:flex;gap:6px;align-items:center}
+.hint{color:var(--dim);font-size:12px}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+details summary{cursor:pointer;color:var(--dim);font-size:12px}
+textarea{width:100%;height:160px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:12px ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header>
+  <h1>Statusline Studio</h1>
+  <span class="path" id="path"></span>
+  <span id="status"></span>
+  <button id="reset">Reset to defaults</button>
+  <button id="save" class="primary">Save</button>
+</header>
+
+<div id="preview-wrap">
+  <div class="pbar">terminal width
+    <input type="range" id="cols" min="50" max="220" value="120"> <span id="colsv">120</span> cols
+    <span class="hint">Preview is rendered by the real script with sample data. Nerd Font glyphs show if the font is installed.</span>
+  </div>
+  <div id="preview"></div>
+</div>
+
+<main>
+  <section id="editor"></section>
+  <aside>
+    <h2>Inspector</h2>
+    <div class="card" id="inspector"><span class="hint">Click an element to edit it.</span></div>
+    <h2>Elements <span class="hint">(drag into a row, or use the + menus)</span></h2>
+    <div class="card"><div class="palette" id="palette"></div></div>
+    <h2>Global</h2>
+    <div class="card" id="globals"></div>
+    <details><summary>Layout JSON</summary><textarea id="json" readonly></textarea></details>
+  </aside>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const BAR_EL = ["context", "five_hour", "seven_day"];
+const NAMES = {dir:"dir",git:"git",model:"model",context:"context",five_hour:"5h",seven_day:"7d",in_tok:"in tok",out_tok:"out tok",tok_per_min:"tok/m",tok_per_sec:"tok/s",throughput:"throughput",session_id:"session id",session_duration:"duration",clock:"clock",cost:"cost",lines:"lines",version:"version",text:"text"};
+let S = null;           // {layout, defaults, elements, path}
+let sel = null;         // {ctx:'rows'|'top'|'bottom', r, g, i}
+let dirty = false, timer = null, reqN = 0;
+const $ = id => document.getElementById(id);
+
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k));
+  return e;
+}
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"X-Token": TOKEN, "Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  return r.json();
+}
+
+// ---------------------------------------------------------------- model ----
+const GROUPS = ["left", "center", "right"];
+const isGrid = r => !!r.columns;
+function normItem(x) { return typeof x === "string" ? {id: x} : {...x}; }
+function normalize(layout) {
+  layout.rows = layout.rows.map(r => {
+    r = Array.isArray(r) ? {left: r} : {...r};
+    if (r.columns) {
+      r.items = (r.items || GROUPS.flatMap(g => r[g] || [])).map(normItem);
+      GROUPS.forEach(g => delete r[g]);
+    } else {
+      GROUPS.forEach(g => r[g] = (r[g] || []).map(normItem));
+    }
+    return r;
+  });
+  for (const side of ["top", "bottom"]) {
+    layout[side] = layout[side] || {};
+    GROUPS.forEach(g => layout[side][g] = (layout[side][g] || []).map(normItem));
+  }
+  return layout;
+}
+function simple(it) { return Object.keys(it).length === 1 ? it.id : it; }
+function exportLayout() {
+  const L = JSON.parse(JSON.stringify(S.layout));
+  L.rows = L.rows.map(r => {
+    if (r.columns) { r.items = r.items.map(simple); if (!r.col_widths) delete r.col_widths; return r; }
+    GROUPS.forEach(g => { r[g] = (r[g] || []).map(simple); if (!r[g].length) delete r[g]; });
+    return r;
+  });
+  for (const side of ["top", "bottom"]) GROUPS.forEach(g => L[side][g] = L[side][g].map(simple));
+  return L;
+}
+function zoneArr(ref) {
+  if (ref.ctx === "rows") { const r = S.layout.rows[ref.r]; return isGrid(r) ? r.items : (r[ref.g] = r[ref.g] || []); }
+  return S.layout[ref.ctx][ref.g];
+}
+const selItem = () => sel && zoneArr(sel)[sel.i];
+
+// --------------------------------------------------------------- render ----
+function render() {
+  renderEditor(); renderInspector(); renderGlobals();
+  $("json").value = JSON.stringify(exportLayout(), null, 2);
+}
+
+function chipEl(it, ref) {
+  const grid = ref.ctx === "rows" && isGrid(S.layout.rows[ref.r]);
+  const isSel = sel && sel.ctx === ref.ctx && sel.r === ref.r && sel.g === ref.g && sel.i === ref.i;
+  let badge = "";
+  if (grid) badge = "×" + (it.span || 1);
+  else if (ref.ctx === "rows" && it.width && it.width !== "auto") badge = it.width;
+  const c = h("div", {class: "chip" + (isSel ? " sel" : ""), draggable: true,
+    style: grid ? "grid-column: " + (it.col ? it.col + " / " : "") + "span " + Math.min(5, it.span || 1) : "",
+    onclick: e => { e.stopPropagation(); sel = ref; render(); },
+    ondragstart: e => { e.dataTransfer.setData("text/plain", JSON.stringify({src: ref})); }},
+    NAMES[it.id] || it.id, badge ? h("span", {class: "b"}, badge) : null);
+  return c;
+}
+
+function zoneEl(ref, label, grid, cols) {
+  const arr = zoneArr(ref);
+  const z = h("div", {class: "zone" + (grid ? " grid" : ""),
+    style: grid ? "grid-template-columns: repeat(" + cols + ", minmax(0,1fr))" : "",
+    ondragover: e => { e.preventDefault(); z.classList.add("over"); },
+    ondragleave: () => z.classList.remove("over"),
+    ondrop: e => { e.preventDefault(); z.classList.remove("over"); dropOn(e, ref, z); }},
+    arr.map((it, i) => chipEl(it, {...ref, i})),
+    h("select", {class: "addsel", title: "Add element", onchange: e => {
+        if (!e.target.value) return;
+        arr.push({id: e.target.value}); sel = {...ref, i: arr.length - 1}; changed(); render();
+      }}, h("option", {value: ""}, "+"), S.elements.map(id => h("option", {value: id}, NAMES[id] || id))));
+  return h("div", {class: "zone-wrap", style: grid ? "width:100%" : ""}, label ? h("small", {}, label) : null, z);
+}
+
+function dropOn(e, dest, zoneNode) {
+  let data; try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+  const chips = [...zoneNode.querySelectorAll(".chip")];
+  let idx = chips.length;
+  for (let k = 0; k < chips.length; k++) {
+    const b = chips[k].getBoundingClientRect();
+    if (e.clientY < b.top || (e.clientY <= b.bottom && e.clientX < b.left + b.width / 2)) { idx = k; break; }
+  }
+  const darr = zoneArr(dest);
+  let item;
+  if (data.new) item = {id: data.new};
+  else {
+    const sarr = zoneArr(data.src);
+    item = sarr.splice(data.src.i, 1)[0];
+    if (sarr === darr && data.src.i < idx) idx--;
+    // grid-only options are meaningless in flow zones and vice versa
+    const g = dest.ctx === "rows" && isGrid(S.layout.rows[dest.r]);
+    if (!g) { delete item.span; delete item.col; }
+    if (g || dest.ctx !== "rows") { delete item.width; delete item.weight; }
+  }
+  darr.splice(idx, 0, item);
+  sel = {...dest, i: idx};
+  changed(); render();
+}
+
+function renderEditor() {
+  const root = $("editor"); root.innerHTML = "";
+  root.append(h("h2", {}, "Top bar"), barCard("top"));
+  root.append(h("h2", {}, "Rows"));
+  S.layout.rows.forEach((r, ri) => root.append(rowCard(r, ri)));
+  root.append(h("button", {onclick: () => { S.layout.rows.push({left: []}); changed(); render(); }}, "+ Add row"));
+  root.append(h("h2", {}, "Bottom bar"), barCard("bottom"));
+}
+
+function barCard(side) {
+  return h("div", {class: "card"}, h("div", {class: "zones"},
+    GROUPS.map(g => zoneEl({ctx: side, r: 0, g}, g, false))));
+}
+
+function rowCard(r, ri) {
+  const grid = isGrid(r);
+  const head = h("div", {class: "rowhead"},
+    h("label", {}, "mode", h("select", {onchange: e => toggleMode(ri, e.target.value === "grid")},
+      h("option", {value: "flow", selected: !grid}, "flow"), h("option", {value: "grid", selected: grid}, "grid"))),
+    grid ? h("label", {}, "columns", h("select", {onchange: e => { r.columns = +e.target.value; changed(); render(); }},
+      [1, 2, 3, 4, 5].map(n => h("option", {value: n, selected: n === r.columns}, n)))) : null,
+    grid ? h("label", {}, "col widths", h("input", {type: "text", style: "width:80px", placeholder: "1,1,1", value: (r.col_widths || []).join(","),
+      onchange: e => { const v = e.target.value.split(",").map(x => parseInt(x)).filter(x => x > 0); if (v.length) r.col_widths = v; else delete r.col_widths; changed(); render(); }})) : null,
+    h("label", {}, "gap", h("input", {type: "number", min: 0, value: r.gap ?? S.layout.gap, onchange: e => { r.gap = +e.target.value; changed(); render(); }})),
+    h("label", {}, h("input", {type: "checkbox", checked: r.divider !== false, onchange: e => { if (e.target.checked) delete r.divider; else r.divider = false; changed(); render(); }}), "divider"),
+    h("span", {class: "sp"}),
+    h("button", {title: "Move up", onclick: () => moveRow(ri, -1)}, "↑"),
+    h("button", {title: "Move down", onclick: () => moveRow(ri, 1)}, "↓"),
+    h("button", {title: "Delete row", onclick: () => { S.layout.rows.splice(ri, 1); sel = null; changed(); render(); }}, "✕"));
+  const body = grid
+    ? zoneEl({ctx: "rows", r: ri, g: "items"}, null, true, r.columns)
+    : h("div", {class: "zones"}, GROUPS.map(g => zoneEl({ctx: "rows", r: ri, g}, g, false)));
+  return h("div", {class: "card"}, head, body);
+}
+
+function toggleMode(ri, toGrid) {
+  const r = S.layout.rows[ri]; sel = null;
+  if (toGrid && !isGrid(r)) {
+    r.items = GROUPS.flatMap(g => r[g] || []).map(i => { const c = {...i}; delete c.width; delete c.weight; return c; });
+    GROUPS.forEach(g => delete r[g]); r.columns = Math.min(5, Math.max(2, r.items.length));
+  } else if (!toGrid && isGrid(r)) {
+    r.left = r.items.map(i => { const c = {...i}; delete c.span; delete c.col; return c; });
+    r.center = []; r.right = []; delete r.items; delete r.columns; delete r.col_widths;
+  }
+  changed(); render();
+}
+function moveRow(i, d) {
+  const j = i + d, rs = S.layout.rows;
+  if (j < 0 || j >= rs.length) return;
+  [rs[i], rs[j]] = [rs[j], rs[i]]; sel = null; changed(); render();
+}
+
+// ------------------------------------------------------------ inspector ----
+function field(label, input) { return h("div", {}, h("label", {}, label), input); }
+function setOpt(it, k, v, def) {
+  if (v === "" || v === null || v === undefined || v === def) delete it[k]; else it[k] = v;
+  changed();
+}
+function renderInspector() {
+  const box = $("inspector"); box.innerHTML = "";
+  const it = selItem();
+  if (!it) { box.append(h("span", {class: "hint"}, "Click an element to edit it.")); return; }
+  const inRow = sel.ctx === "rows";
+  const grid = inRow && isGrid(S.layout.rows[sel.r]);
+  const full = () => { render(); };
+  const num = (k, min, max, ph) => h("input", {type: "number", min, max, placeholder: ph || "", value: it[k] ?? "",
+    oninput: e => { setOpt(it, k, e.target.value === "" ? "" : +e.target.value); }, onchange: full});
+  const chk = (k, def = true) => h("input", {type: "checkbox", checked: it[k] ?? def,
+    onchange: e => { setOpt(it, k, e.target.checked, def); full(); }});
+  const txt = (k, ph) => h("input", {type: "text", placeholder: ph || "", value: it[k] ?? "",
+    oninput: e => setOpt(it, k, e.target.value), onchange: full});
+
+  box.append(h("div", {class: "inline"}, h("strong", {style: "flex:1"}, NAMES[it.id] || it.id),
+    h("button", {onclick: () => { zoneArr(sel).splice(sel.i, 1); sel = null; changed(); render(); }}, "Remove")));
+
+  if (grid) {
+    box.append(field("span (columns)", num("span", 1, 5, "1")), field("start column (blank = auto)", num("col", 1, 5, "auto")));
+  } else if (inRow) {
+    const w = it.width ?? "auto";
+    const kind = w === "auto" ? "auto" : w === "flex" ? "flex" : String(w).endsWith("%") ? "percent" : "fixed";
+    const val = kind === "percent" ? parseFloat(w) : kind === "fixed" ? w : "";
+    const setW = (k, v) => { setOpt(it, "width", k === "auto" ? "" : k === "flex" ? "flex" : k === "percent" ? (v || 50) + "%" : (+v || 10), ""); };
+    const kindSel = h("select", {onchange: e => { setW(e.target.value, ""); full(); }},
+      ["auto", "flex", "fixed", "percent"].map(k => h("option", {value: k, selected: k === kind}, k)));
+    box.append(field("width", h("div", {class: "inline"}, kindSel,
+      (kind === "fixed" || kind === "percent") ? h("input", {type: "number", min: 1, value: val, oninput: e => setW(kind, e.target.value), onchange: full}) : null,
+      kind === "fixed" ? h("span", {class: "hint"}, "cols") : kind === "percent" ? h("span", {class: "hint"}, "%") : null)));
+    if (kind === "flex") box.append(field("flex weight", num("weight", 1, 20, "1")));
+  }
+  if (inRow) box.append(field("align", h("select", {onchange: e => { setOpt(it, "align", e.target.value, "left"); full(); }},
+    ["left", "center", "right"].map(a => h("option", {value: a, selected: (it.align || "left") === a}, a)))));
+  if (BAR_EL.includes(it.id)) {
+    box.append(h("div", {class: "cols2"}, field("icon", chk("show_icon")), field("label", chk("show_label"))),
+      field("tail text (resets / size)", chk("show_tail")), field("label text", txt("label")),
+      field("bar width when not stretched", num("bar_width", 4, 200, "12")));
+  }
+  if (it.id === "throughput") box.append(field("sparkline width when not stretched", num("bar_width", 4, 200, "20")));
+  if (it.id === "model") box.append(field("show effort", chk("show_effort")));
+  if (it.id === "clock") box.append(field("strftime format", txt("format", S.layout.clock_format)));
+  if (it.id === "text") box.append(field("text", txt("text")), field("color (#rrggbb)", txt("color")));
+}
+
+function renderGlobals() {
+  const box = $("globals"); box.innerHTML = "";
+  const L = S.layout;
+  const num = (k, min) => field(k.replace(/_/g, " "), h("input", {type: "number", min, value: L[k],
+    onchange: e => { L[k] = +e.target.value; changed(); render(); }}));
+  box.append(h("div", {class: "cols2"}, num("gap", 0), num("border_gap", 0), num("label_width", 0), num("side_margin", 0), num("min_width", 20), num("max_width", 20)),
+    field("row dividers", h("input", {type: "checkbox", checked: L.row_dividers, onchange: e => { L.row_dividers = e.target.checked; changed(); render(); }})),
+    field("equal bar lengths in a row", h("input", {type: "checkbox", checked: !!L.equal_bars, onchange: e => { L.equal_bars = e.target.checked; changed(); render(); }})),
+    field("clock format", h("input", {type: "text", value: L.clock_format, onchange: e => { L.clock_format = e.target.value; changed(); render(); }})));
+}
+
+// -------------------------------------------------------------- preview ----
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function ansi(t) {
+  let out = "", fg = null, bg = null, bold = false, last = 0, m;
+  const re = /\x1b\[([0-9;]*)m/g;
+  const emit = s => {
+    if (!s) return; s = esc(s);
+    let st = (fg ? "color:" + fg + ";" : "") + (bg ? "background:" + bg + ";" : "") + (bold ? "font-weight:700;" : "");
+    out += st ? '<span style="' + st + '">' + s + "</span>" : s;
+  };
+  while ((m = re.exec(t))) {
+    emit(t.slice(last, m.index)); last = re.lastIndex;
+    const p = m[1] === "" ? [0] : m[1].split(";").map(Number);
+    for (let i = 0; i < p.length; i++) {
+      if (p[i] === 0) { fg = bg = null; bold = false; }
+      else if (p[i] === 1) bold = true;
+      else if (p[i] === 38 && p[i + 1] === 2) { fg = "rgb(" + p[i + 2] + "," + p[i + 3] + "," + p[i + 4] + ")"; i += 4; }
+      else if (p[i] === 48 && p[i + 1] === 2) { bg = "rgb(" + p[i + 2] + "," + p[i + 3] + "," + p[i + 4] + ")"; i += 4; }
+    }
+  }
+  emit(t.slice(last));
+  return out;
+}
+async function refreshPreview() {
+  const n = ++reqN;
+  const res = await api("/api/render", {layout: exportLayout(), cols: +$("cols").value});
+  if (n !== reqN) return;
+  $("preview").innerHTML = res.error ? esc(res.error) : ansi(res.text);
+}
+function changed() {
+  dirty = true; setStatus("unsaved", "dirty");
+  clearTimeout(timer); timer = setTimeout(refreshPreview, 120);
+  $("json").value = JSON.stringify(exportLayout(), null, 2);
+}
+function setStatus(t, c) { const s = $("status"); s.textContent = t; s.className = c || ""; }
+
+// ----------------------------------------------------------------- init ----
+(async function () {
+  S = await api("/api/state");
+  S.layout = normalize(S.layout);
+  $("path").textContent = S.path;
+  $("palette").append(...S.elements.map(id => h("div", {class: "chip", draggable: true,
+    ondragstart: e => e.dataTransfer.setData("text/plain", JSON.stringify({new: id}))}, NAMES[id] || id)));
+  $("cols").addEventListener("input", () => { $("colsv").textContent = $("cols").value; clearTimeout(timer); timer = setTimeout(refreshPreview, 80); });
+  $("save").onclick = async () => {
+    const r = await api("/api/save", {layout: exportLayout()});
+    if (r.saved) { dirty = false; setStatus("saved", "ok"); } else setStatus(r.error || "error", "err");
+  };
+  $("reset").onclick = () => {
+    if (!confirm("Replace the layout with the built-in defaults? (not saved until you press Save)")) return;
+    S.layout = normalize(JSON.parse(JSON.stringify(S.defaults))); sel = null; changed(); render();
+  };
+  window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+  render(); refreshPreview();
+})();
+</script>
+</body>
+</html>
